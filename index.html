@@ -1,0 +1,3144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>GeoChat | Discover the Vibe</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/noUiSlider/15.7.1/nouislider.min.css" />
+    <script src="/socket.io/socket.io.js"></script>
+    <style>
+        :root {
+            --bg: #f4f7fb;
+            --card: rgba(255, 255, 255, 0.97);
+            --text: #13213c;
+            --muted: #6b7280;
+            --border: #d9e2f0;
+            --accent: #2368d9;
+            --accent-dark: #1247a6;
+            --warm: #ff5a2a;
+            --shadow: 0 18px 42px rgba(15, 23, 42, 0.18);
+        }
+
+        * { box-sizing: border-box; }
+        html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--text); }
+        #map { position: absolute; inset: 0; width: 100%; height: 100vh; z-index: 1; background: linear-gradient(180deg, #bde7ff 0%, #edf8ff 100%); }
+        #status-stack { position: absolute; top: 16px; right: 16px; z-index: 1000; display: flex; flex-direction: column; gap: 10px; align-items: flex-end; }
+        .status-pill { min-width: 188px; padding: 13px 18px; border-radius: 26px; border: 1px solid rgba(217,226,240,0.92); background: linear-gradient(180deg, rgba(255,255,255,0.99), rgba(255,255,255,0.95)); box-shadow: 0 16px 32px rgba(15,23,42,0.14); font-size: 0.92rem; font-weight: 800; text-align: left; }
+        .status-pill.secondary { color: var(--muted); font-weight: 700; }
+        .status-pill.action { display: inline-flex; align-items: center; justify-content: center; min-width: 0; border: none; color: #fff; cursor: pointer; background: linear-gradient(135deg, var(--accent), var(--accent-dark)); text-align: center; }
+        .status-pill.action:hover { transform: translateY(-1px); }
+        body.user-ready #status-stack { top: 104px; }
+
+        #profile-chip { position: absolute; top: 16px; right: 16px; z-index: 1050; display: none; align-items: center; gap: 12px; width: min(100%, 420px); max-width: calc(100% - 32px); padding: 12px 14px; border-radius: 28px; border: 1px solid rgba(217,226,240,0.95); background: linear-gradient(180deg, rgba(255,255,255,0.99), rgba(255,255,255,0.95)); box-shadow: 0 18px 36px rgba(15,23,42,0.16); }
+        #profile-chip.active { display: flex; }
+        .profile-avatar { width: 56px; height: 56px; border-radius: 50%; object-fit: cover; flex-shrink: 0; border: 3px solid rgba(35,104,217,0.14); background: linear-gradient(135deg, #e5efff, #f7fbff); }
+        .profile-copy { min-width: 0; flex: 1; }
+        .profile-name { font-size: 1rem; font-weight: 800; line-height: 1.2; }
+        .profile-meta { margin-top: 4px; font-size: 0.82rem; color: var(--muted); line-height: 1.35; }
+        .profile-actions { display: flex; gap: 8px; flex-shrink: 0; flex-wrap: wrap; justify-content: flex-end; }
+        .profile-action { border: 1px solid var(--border); background: #fff; color: var(--text); border-radius: 999px; padding: 9px 12px; font-size: 0.82rem; font-weight: 800; cursor: pointer; }
+        .profile-action:hover { transform: translateY(-1px); }
+        .profile-action-icon { position: relative; width: 42px; padding: 0; display: inline-flex; align-items: center; justify-content: center; flex: 0 0 42px; }
+        .profile-action-symbol { font-size: 1.05rem; line-height: 1; }
+        .notification-badge { position: absolute; top: -5px; right: -4px; min-width: 20px; height: 20px; padding: 0 6px; border-radius: 999px; background: linear-gradient(135deg, #ef4444, #dc2626); color: #fff; font-size: 0.72rem; font-weight: 900; display: none; align-items: center; justify-content: center; box-shadow: 0 8px 14px rgba(220,38,38,0.24); }
+        .notification-badge.active { display: inline-flex; }
+
+        .drawer-scrim { position: fixed; inset: 0; z-index: 2120; background: rgba(15,23,42,0.26); backdrop-filter: blur(5px); opacity: 0; pointer-events: none; transition: opacity 0.2s ease; }
+        .drawer-scrim.active { opacity: 1; pointer-events: auto; }
+        .side-drawer { position: fixed; top: 0; right: 0; z-index: 2130; width: min(420px, 100%); height: 100%; padding: 20px 18px; display: flex; flex-direction: column; gap: 16px; border-left: 1px solid rgba(217,226,240,0.95); background: rgba(255,255,255,0.98); box-shadow: -18px 0 42px rgba(15,23,42,0.16); backdrop-filter: blur(20px); transform: translateX(100%); transition: transform 0.28s cubic-bezier(0.2, 0.9, 0.2, 1); }
+        .side-drawer.active { transform: translateX(0); }
+        .drawer-header { position: relative; display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding-right: 44px; }
+        .drawer-header h3 { margin: 0 0 6px; font-size: 1.2rem; }
+        .drawer-tabs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+        .drawer-tab { border: 1px solid var(--border); background: #f8fbff; color: var(--muted); border-radius: 18px; padding: 12px 14px; font-size: 0.9rem; font-weight: 800; cursor: pointer; }
+        .drawer-tab.active { color: var(--text); background: #eef4ff; border-color: rgba(35,104,217,0.3); }
+        .drawer-view { display: none; flex: 1; overflow-y: auto; padding-right: 4px; }
+        .drawer-view.active { display: block; }
+        .drawer-section { margin-bottom: 18px; }
+        .drawer-section:last-child { margin-bottom: 0; }
+        .drawer-section-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+        .drawer-section-title { font-size: 0.98rem; font-weight: 800; }
+        .drawer-section-note { font-size: 0.82rem; color: var(--muted); line-height: 1.4; }
+        .drawer-search-input { margin-bottom: 12px; }
+        .drawer-list { display: flex; flex-direction: column; gap: 10px; }
+        .drawer-empty { padding: 18px; border: 1px dashed var(--border); border-radius: 22px; background: #f8fbff; color: var(--muted); font-size: 0.9rem; text-align: center; line-height: 1.5; }
+        .friend-card, .request-card, .search-card, .notification-card { border: 1px solid var(--border); border-radius: 22px; background: linear-gradient(180deg, #fbfdff, #f4f8ff); padding: 14px; }
+        .friend-card-top, .search-card-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+        .friend-card-user { display: flex; align-items: center; gap: 12px; min-width: 0; }
+        .friend-card-avatar { width: 48px; height: 48px; border-radius: 50%; object-fit: cover; flex-shrink: 0; border: 2px solid rgba(35,104,217,0.12); background: #eef4ff; }
+        .friend-card-copy { min-width: 0; flex: 1; }
+        .friend-card-name { font-size: 0.95rem; font-weight: 800; line-height: 1.25; }
+        .friend-card-meta { margin-top: 4px; font-size: 0.82rem; color: var(--muted); line-height: 1.45; }
+        .friend-status-pill { display: inline-flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 999px; background: #fff; border: 1px solid var(--border); font-size: 0.76rem; font-weight: 800; line-height: 1.2; }
+        .friend-status-pill::before { content: ''; width: 8px; height: 8px; border-radius: 50%; background: currentColor; opacity: 0.4; flex-shrink: 0; }
+        .friend-status-pill.hosting { color: #b45309; }
+        .friend-status-pill.activity { color: #2563eb; }
+        .friend-status-pill.online { color: #15803d; }
+        .friend-status-pill.offline { color: #64748b; }
+        .request-card, .notification-card { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+        .request-card-actions, .search-card-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+        .drawer-action-btn { width: auto; padding: 10px 13px; border-radius: 16px; font-size: 0.82rem; }
+        .notification-card { align-items: flex-start; }
+        .notification-card.unread { border-color: rgba(35,104,217,0.28); box-shadow: 0 10px 22px rgba(35,104,217,0.08); }
+        .notification-card-title { font-size: 0.92rem; font-weight: 800; line-height: 1.35; }
+        .notification-card-time { font-size: 0.76rem; color: var(--muted); white-space: nowrap; flex-shrink: 0; }
+
+        #activities-panel { position: fixed; inset: 112px 16px 20px auto; width: min(420px, calc(100% - 32px)); z-index: 2100; display: none; flex-direction: column; gap: 14px; padding: 18px; border-radius: 28px; border: 1px solid rgba(217,226,240,0.95); background: rgba(255,255,255,0.98); box-shadow: 0 22px 48px rgba(15,23,42,0.2); backdrop-filter: blur(18px); overflow: hidden; }
+        #activities-panel.active { display: flex; }
+        .panel-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+        .panel-title { margin: 0; font-size: 1.1rem; }
+        .panel-subtitle { font-size: 0.84rem; color: var(--muted); line-height: 1.4; }
+        #activities-list { display: flex; flex-direction: column; gap: 10px; overflow-y: auto; padding-right: 4px; }
+        .activity-list-card { border: 1px solid var(--border); border-radius: 22px; background: linear-gradient(180deg, #fbfdff, #f4f8ff); padding: 14px; cursor: pointer; transition: transform 0.18s ease, box-shadow 0.18s ease; }
+        .activity-list-card:hover { transform: translateY(-1px); box-shadow: 0 12px 22px rgba(15,23,42,0.1); }
+        .activity-list-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
+        .activity-list-theme { display: inline-flex; align-items: center; gap: 8px; font-size: 0.9rem; font-weight: 800; }
+        .activity-list-distance { font-size: 0.82rem; font-weight: 800; color: var(--accent); }
+        .activity-list-goal { font-size: 0.98rem; font-weight: 700; line-height: 1.35; margin-bottom: 6px; }
+        .activity-list-meta { font-size: 0.84rem; color: var(--muted); line-height: 1.45; }
+        .activity-list-empty { border: 1px dashed var(--border); border-radius: 22px; padding: 18px; background: #f8fbff; font-size: 0.9rem; color: var(--muted); text-align: center; }
+        .distance-line { display: inline-flex; align-items: center; gap: 8px; margin-top: 6px; font-size: 0.82rem; font-weight: 800; color: var(--accent); }
+        .distance-dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; opacity: 0.35; }
+        body.list-view-active #map { opacity: 0.22; pointer-events: none; }
+
+        #auth-overlay { position: fixed; inset: 0; z-index: 2600; display: none; align-items: center; justify-content: center; padding: 18px; background: radial-gradient(circle at top left, rgba(35,104,217,0.16), transparent 36%), linear-gradient(180deg, rgba(244,247,251,0.98), rgba(234,241,250,0.98)); backdrop-filter: blur(12px); }
+        #auth-overlay.active { display: flex; }
+        .auth-card { width: min(100%, 540px); max-height: min(92vh, 820px); overflow-y: auto; padding: 26px; border-radius: 30px; background: rgba(255,255,255,0.98); border: 1px solid rgba(217,226,240,0.95); box-shadow: 0 26px 56px rgba(15,23,42,0.18); }
+        .auth-title { margin: 0 0 8px; font-size: 1.85rem; line-height: 1.1; }
+        .auth-subtitle { margin-bottom: 18px; }
+        .auth-tabs { display: flex; gap: 10px; margin: 18px 0; }
+        .auth-tab { flex: 1; border-radius: 16px; border: 1px solid var(--border); background: #f8fbff; color: var(--muted); padding: 13px 14px; font-weight: 800; cursor: pointer; }
+        .auth-tab.active { color: var(--text); background: #eef4ff; border-color: rgba(35,104,217,0.3); }
+        .auth-form { display: none; }
+        .auth-form.active { display: block; }
+        .auth-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+        .auth-field { margin-bottom: 14px; }
+        .auth-field.full { grid-column: 1 / -1; }
+        .auth-input, .auth-select, .auth-textarea { width: 100%; border-radius: 18px; border: 1px solid var(--border); background: #f8fbff; padding: 14px 16px; font: inherit; color: var(--text); outline: none; }
+        .auth-textarea { min-height: 110px; resize: vertical; }
+        .auth-input:focus, .auth-select:focus, .auth-textarea:focus { border-color: rgba(35,104,217,0.45); box-shadow: 0 0 0 4px rgba(35,104,217,0.08); }
+        .auth-actions { display: flex; gap: 12px; margin-top: 8px; }
+        .auth-preview { display: flex; align-items: center; gap: 12px; margin: 10px 0 16px; padding: 12px; border-radius: 20px; background: #f8fbff; border: 1px solid var(--border); }
+        .auth-preview-copy { min-width: 0; }
+        .auth-preview-title { font-size: 0.82rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
+        .auth-preview-meta { margin-top: 4px; font-size: 0.86rem; color: var(--text); line-height: 1.35; }
+        .auth-note { display: block; margin-top: 8px; font-size: 0.84rem; color: var(--muted); line-height: 1.45; }
+        #profile-cancel-btn { display: none; }
+
+        #bottom-sheet { position: fixed; left: 50%; bottom: -120%; transform: translateX(-50%); width: min(94%, 460px); max-height: min(80vh, 620px); overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; z-index: 2000; background: var(--card); border-radius: 30px; padding: 22px; border: 1px solid rgba(217,226,240,0.95); box-shadow: var(--shadow); backdrop-filter: blur(14px); transition: bottom 0.35s cubic-bezier(0.2, 0.9, 0.2, 1); }
+        #bottom-sheet.active { bottom: 18px; }
+        .sheet-view { display: none; }
+        #info-view { display: block; }
+        .close-sheet { position: absolute; top: 14px; right: 14px; width: 34px; height: 34px; border-radius: 50%; border: none; background: #f3f6fb; color: var(--text); font-size: 1.15rem; font-weight: 700; cursor: pointer; }
+        .sheet-header, .activity-hero { display: flex; gap: 16px; align-items: center; margin-bottom: 22px; }
+        .place-circle, .theme-badge { width: 74px; height: 74px; border-radius: 24px; border: 3px solid rgba(35,104,217,0.16); object-fit: cover; background: linear-gradient(135deg, #e6efff, #f8fbff); display: grid; place-items: center; flex-shrink: 0; }
+        .theme-badge { font-size: 2rem; }
+        .view-kicker { font-size: 0.76rem; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase; color: var(--accent); margin-bottom: 6px; }
+        .subtle-line { font-size: 0.92rem; color: var(--muted); line-height: 1.45; }
+        .trending-label { margin-top: 8px; font-size: 0.84rem; font-weight: 700; color: var(--warm); }
+        .action-grid, .stats-grid, .theme-chooser { display: grid; gap: 12px; }
+        .action-grid, .stats-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .theme-chooser { grid-template-columns: repeat(2, minmax(0, 1fr)); margin: 18px 0 16px; }
+        .join-btn, .secondary-btn, .ghost-btn, .theme-option, .send-btn { transition: transform 0.18s ease, opacity 0.18s ease; }
+        .join-btn, .secondary-btn, .ghost-btn { width: 100%; padding: 15px 16px; border-radius: 20px; font-weight: 800; font-size: 1rem; cursor: pointer; }
+        .join-btn { border: none; color: #fff; background: linear-gradient(135deg, var(--accent), var(--accent-dark)); box-shadow: 0 12px 22px rgba(35,104,217,0.24); }
+        .secondary-btn { border: 1px solid var(--border); background: #f7faff; color: var(--text); }
+        .danger-btn { width: 100%; padding: 15px 16px; border-radius: 20px; border: none; font-weight: 800; font-size: 1rem; cursor: pointer; color: #fff; background: linear-gradient(135deg, #ef4444, #b91c1c); box-shadow: 0 12px 22px rgba(185,28,28,0.2); transition: transform 0.18s ease, opacity 0.18s ease; }
+        .danger-btn.compact { width: auto; padding: 11px 14px; font-size: 0.88rem; border-radius: 16px; box-shadow: none; }
+        .ghost-btn { width: auto; padding: 10px 14px; border: 1px solid var(--border); background: #fff; color: var(--text); font-size: 0.92rem; }
+        .join-btn:hover, .secondary-btn:hover, .ghost-btn:hover, .theme-option:hover, .danger-btn:hover { transform: translateY(-1px); }
+        .join-btn:disabled, .secondary-btn:disabled, .ghost-btn:disabled, .theme-option:disabled, .send-btn:disabled, .danger-btn:disabled { opacity: 0.65; cursor: default; transform: none; }
+        .theme-pill { display: inline-flex; align-items: center; padding: 7px 12px; border-radius: 999px; font-size: 0.8rem; font-weight: 800; margin-bottom: 8px; background: #eef4ff; color: var(--accent); }
+        .stat-card, .goal-card { border-radius: 22px; background: linear-gradient(180deg, #fbfdff, #f3f7ff); border: 1px solid var(--border); padding: 14px 16px; }
+        .stat-card span { display: block; font-size: 0.76rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); margin-bottom: 8px; }
+        .goal-card { margin-bottom: 18px; }
+        #activity-callout { font-size: 1rem; line-height: 1.55; font-weight: 600; }
+        .avatar-section { margin-bottom: 18px; }
+        .avatar-strip { display: flex; align-items: center; min-height: 44px; margin: 10px 0 8px; }
+        .avatar-pill { width: 42px; height: 42px; border-radius: 50%; border: 2px solid #fff; display: grid; place-items: center; margin-left: -10px; background: linear-gradient(135deg, #2368d9, #4aa8ff); color: #fff; font-size: 0.78rem; font-weight: 800; box-shadow: 0 6px 12px rgba(15,23,42,0.12); }
+        .avatar-pill:first-child { margin-left: 0; }
+        .avatar-empty { display: inline-flex; align-items: center; padding: 9px 12px; border-radius: 999px; background: #f4f7fb; border: 1px dashed var(--border); color: var(--muted); font-size: 0.9rem; font-weight: 600; }
+        .participants-copy { font-size: 0.92rem; color: var(--muted); line-height: 1.45; }
+
+        #chat-interface { display: none; height: min(62vh, 480px); flex-direction: column; }
+        .chat-header { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 12px; }
+        .chat-header-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+        .chat-room-title { font-size: 1.05rem; font-weight: 800; line-height: 1.35; }
+        .chat-room-meta { font-size: 0.84rem; color: var(--muted); line-height: 1.4; }
+        #messages { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; padding-right: 6px; margin-bottom: 14px; }
+        .msg { padding: 12px 14px; border-radius: 18px; max-width: 85%; font-size: 0.94rem; line-height: 1.45; word-break: break-word; }
+        .msg.me { align-self: flex-end; color: #fff; background: linear-gradient(135deg, var(--accent), var(--accent-dark)); border-bottom-right-radius: 6px; }
+        .msg.other { align-self: flex-start; background: #f4f7fc; border: 1px solid var(--border); border-bottom-left-radius: 6px; }
+        .msg.system { align-self: center; max-width: 100%; padding: 0; background: transparent; color: var(--muted); font-size: 0.78rem; text-align: center; }
+        .msg-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; font-size: 0.74rem; opacity: 0.82; margin-bottom: 5px; }
+        .msg-author { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
+        .msg-name { font-weight: 800; }
+        .chat-friend-slot { display: inline-flex; align-items: center; min-height: 22px; }
+        .chat-friend-btn { min-width: 22px; height: 22px; padding: 0 7px; border-radius: 999px; border: 1px solid rgba(35,104,217,0.24); background: rgba(255,255,255,0.92); color: var(--accent); font-size: 0.82rem; font-weight: 900; line-height: 1; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }
+        .chat-friend-btn:hover { transform: translateY(-1px); background: #fff; }
+        .chat-friend-btn:disabled { cursor: default; transform: none; }
+        .chat-friend-btn.pending { opacity: 0.8; }
+        .chat-friend-btn.requested { min-width: 0; padding: 0 8px; font-size: 0.66rem; letter-spacing: 0.04em; color: var(--accent-dark); background: #eef4ff; }
+        .chat-compose { display: flex; gap: 10px; padding-top: 12px; border-top: 1px solid var(--border); }
+        #msg-input { flex: 1; padding: 14px 16px; border-radius: 18px; border: 1px solid var(--border); background: #f8fbff; outline: none; font-size: 0.96rem; }
+        .send-btn { width: 50px; height: 50px; border-radius: 50%; border: none; background: linear-gradient(135deg, var(--accent), var(--accent-dark)); color: #fff; font-size: 1.2rem; cursor: pointer; flex-shrink: 0; }
+
+        .modal-overlay { position: fixed; inset: 0; z-index: 2200; display: none; align-items: center; justify-content: center; background: rgba(15,23,42,0.4); backdrop-filter: blur(8px); padding: 18px; }
+        .modal-overlay.active { display: flex; }
+        .modal-card { position: relative; width: min(100%, 520px); max-height: min(90vh, 720px); overflow-y: auto; padding: 24px; border-radius: 28px; background: #fff; border: 1px solid var(--border); box-shadow: var(--shadow); }
+        .modal-card h3 { margin: 0 0 8px; font-size: 1.35rem; }
+        .modal-close { top: 12px; right: 12px; }
+        .theme-option { min-height: 94px; padding: 14px 10px; border-radius: 20px; border: 1px solid var(--border); background: #f8fbff; cursor: pointer; text-align: center; font-weight: 800; font-size: 0.94rem; line-height: 1.2; color: var(--text); display: flex; flex-direction: column; align-items: center; justify-content: center; }
+        .theme-option span { display: block; font-size: 1.35rem; margin-bottom: 7px; }
+        .theme-option.active { border-color: rgba(35,104,217,0.35); background: #eef4ff; box-shadow: 0 10px 20px rgba(35,104,217,0.12); }
+        .field-label { display: block; font-size: 0.84rem; font-weight: 800; color: var(--muted); letter-spacing: 0.04em; text-transform: uppercase; margin-bottom: 8px; }
+        .host-activity-status { margin: 12px 0 6px; font-size: 0.84rem; line-height: 1.45; color: var(--muted); }
+        .host-activity-status.limited { color: var(--warm); font-weight: 700; }
+        .host-activity-status.loading { color: var(--muted); }
+        .activity-planner-section { margin-bottom: 18px; }
+        .date-selector { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 4px; scrollbar-width: none; }
+        .date-selector::-webkit-scrollbar { display: none; }
+        .date-option { min-width: 78px; padding: 12px 10px; border-radius: 20px; border: 1px solid var(--border); background: #f8fbff; color: var(--text); cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 4px; font: inherit; flex-shrink: 0; }
+        .date-option.active { border-color: transparent; color: #fff; background: linear-gradient(135deg, var(--accent), var(--accent-dark)); box-shadow: 0 12px 22px rgba(35,104,217,0.24); }
+        .date-option-kicker { font-size: 0.72rem; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; opacity: 0.74; }
+        .date-option-day { font-size: 1.08rem; font-weight: 800; line-height: 1; }
+        .date-option-month { font-size: 0.8rem; font-weight: 700; opacity: 0.78; }
+        .slider-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+        .slider-header .field-label { margin-bottom: 0; }
+        .slider-value { font-size: 0.92rem; font-weight: 800; color: var(--accent); white-space: nowrap; }
+        .slider-shell { padding: 16px 14px 14px; border-radius: 22px; border: 1px solid var(--border); background: linear-gradient(180deg, #fbfdff, #f3f7ff); }
+        #activity-age-slider { margin: 12px 4px 8px; }
+        .planner-note { margin-top: 10px; }
+        .activity-detail-row { display: flex; flex-wrap: wrap; gap: 10px; margin: -4px 0 18px; }
+        .activity-detail-chip { display: inline-flex; align-items: center; gap: 8px; padding: 10px 12px; border-radius: 999px; background: #f8fbff; border: 1px solid var(--border); font-size: 0.84rem; font-weight: 800; color: var(--text); }
+        .activity-detail-chip span { font-size: 1rem; line-height: 1; }
+        .activity-host-controls { margin-top: 12px; }
+        .noUi-target { height: 8px; border: none; box-shadow: none; background: rgba(35,104,217,0.14); }
+        .noUi-connect { background: linear-gradient(90deg, var(--accent), #4aa8ff); }
+        .noUi-horizontal .noUi-handle { width: 22px; height: 22px; right: -11px; top: -7px; border-radius: 50%; border: 3px solid #fff; background: var(--accent); box-shadow: 0 8px 16px rgba(35,104,217,0.24); cursor: grab; }
+        .noUi-handle::before, .noUi-handle::after { display: none; }
+        #activity-goal-input { width: 100%; min-height: 118px; resize: none; border-radius: 20px; border: 1px solid var(--border); padding: 16px; background: #f8fbff; font: inherit; outline: none; margin-bottom: 16px; }
+        .history-card { width: min(100%, 760px); max-height: min(92vh, 860px); }
+        .history-list { margin-top: 18px; display: flex; flex-direction: column; gap: 12px; }
+        .history-item { border: 1px solid var(--border); border-radius: 24px; padding: 16px; background: linear-gradient(180deg, #fbfdff, #f3f7ff); }
+        .history-item-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+        .history-item-theme { display: inline-flex; align-items: center; gap: 8px; font-size: 0.92rem; font-weight: 800; }
+        .history-item-theme span { font-size: 1.2rem; }
+        .history-item-status { display: inline-flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 999px; background: #fff; border: 1px solid var(--border); font-size: 0.78rem; font-weight: 800; }
+        .history-item-goal { font-size: 1rem; font-weight: 800; line-height: 1.4; margin-bottom: 8px; }
+        .history-item-meta { font-size: 0.86rem; color: var(--muted); line-height: 1.55; }
+        .history-empty { padding: 26px 18px; border-radius: 24px; border: 1px dashed var(--border); background: #f8fbff; text-align: center; color: var(--muted); }
+        .history-loading { padding: 26px 18px; border-radius: 24px; border: 1px solid var(--border); background: #f8fbff; text-align: center; color: var(--muted); }
+        .confirmation-copy { margin-bottom: 18px; line-height: 1.55; color: var(--muted); }
+        .confirm-actions { display: flex; gap: 12px; }
+        .success-overlay { position: fixed; inset: 0; z-index: 2400; display: none; align-items: center; justify-content: center; padding: 18px; background: rgba(15,23,42,0.28); backdrop-filter: blur(10px); }
+        .success-overlay.active { display: flex; }
+        .success-card { width: min(100%, 360px); padding: 30px 24px; border-radius: 30px; background: rgba(255,255,255,0.98); border: 1px solid rgba(217,226,240,0.95); box-shadow: 0 26px 56px rgba(15,23,42,0.18); text-align: center; animation: success-pop 0.3s ease; }
+        .success-ring { width: 92px; height: 92px; margin: 0 auto 16px; border-radius: 50%; display: grid; place-items: center; background: radial-gradient(circle at 30% 30%, #bbf7d0, #22c55e); box-shadow: 0 16px 28px rgba(34,197,94,0.22); animation: success-bounce 0.6s ease; }
+        .success-check { color: #fff; font-size: 2.4rem; font-weight: 900; }
+        .success-title { font-size: 1.4rem; font-weight: 900; margin-bottom: 8px; }
+        .success-copy { color: var(--muted); line-height: 1.5; }
+        @keyframes success-pop {
+            from { opacity: 0; transform: scale(0.94); }
+            to { opacity: 1; transform: scale(1); }
+        }
+        @keyframes success-bounce {
+            0% { transform: scale(0.72); }
+            55% { transform: scale(1.08); }
+            100% { transform: scale(1); }
+        }
+        .toast { position: fixed; top: 74px; left: 50%; transform: translate(-50%, -12px); z-index: 2300; padding: 12px 16px; border-radius: 999px; background: rgba(20,33,61,0.94); color: #fff; font-size: 0.88rem; font-weight: 700; opacity: 0; pointer-events: none; transition: opacity 0.18s ease, transform 0.18s ease; white-space: nowrap; box-shadow: 0 10px 22px rgba(15,23,42,0.22); }
+        .toast.active { opacity: 1; transform: translate(-50%, 0); }
+
+        @media (max-width: 520px) {
+            #status-stack { top: 78px; right: 12px; }
+            body.user-ready #status-stack { top: 176px; }
+            #profile-chip { left: 8px; right: 8px; top: 8px; width: auto; max-width: none; align-items: flex-start; flex-wrap: wrap; }
+            .profile-actions { width: 100%; }
+            .profile-action { flex: 1; text-align: center; }
+            .profile-action-icon { flex: 0 0 42px; }
+            .side-drawer { width: 100%; padding: 16px 14px; }
+            .drawer-section-header, .request-card, .friend-card-top, .search-card-top { flex-direction: column; }
+            .request-card-actions, .search-card-actions { width: 100%; }
+            .request-card-actions .ghost-btn, .request-card-actions .join-btn, .search-card-actions .ghost-btn, .search-card-actions .join-btn, .drawer-section-header .ghost-btn { width: 100%; }
+            #activities-panel { inset: 210px 8px 14px 8px; width: auto; }
+            .action-grid, .stats-grid { grid-template-columns: 1fr; }
+            .theme-chooser { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+            #bottom-sheet { width: calc(100% - 16px); padding: 20px; }
+            .auth-grid { grid-template-columns: 1fr; }
+            .auth-actions { flex-direction: column; }
+            .confirm-actions { flex-direction: column; }
+            .chat-header { align-items: flex-start; }
+            .chat-header-actions { width: 100%; justify-content: stretch; }
+            .chat-header-actions .ghost-btn, .chat-header-actions .danger-btn.compact { width: 100%; }
+        }
+    </style>
+</head>
+<body>
+    <div id="status-stack">
+        <div id="travelers-pill" class="status-pill">0 Travelers Here</div>
+        <div id="activities-pill" class="status-pill secondary">0 Live Activities</div>
+        <button id="view-toggle-btn" class="status-pill action" type="button" onclick="toggleActivitiesView()">Show Activity List</button>
+    </div>
+
+    <div id="profile-chip">
+        <img id="profile-avatar" class="profile-avatar" src="" alt="Your profile picture" />
+        <div class="profile-copy">
+            <div id="profile-name" class="profile-name">Traveler</div>
+            <div id="profile-meta" class="profile-meta">Complete your profile to start exploring.</div>
+        </div>
+        <div class="profile-actions">
+            <button id="alerts-drawer-btn" class="profile-action profile-action-icon" type="button" onclick="openFriendsDrawer('alerts')" aria-label="Open notifications">
+                <span class="profile-action-symbol">&#128276;</span>
+                <span id="friend-notification-badge" class="notification-badge">0</span>
+            </button>
+            <button class="profile-action" type="button" onclick="openFriendsDrawer('friends')">Friends</button>
+            <button class="profile-action" type="button" onclick="openActivityHistoryPage()">History</button>
+            <button class="profile-action" type="button" onclick="openProfileEditor()">Edit Profile</button>
+            <button class="profile-action" type="button" onclick="logoutUser()">Logout</button>
+        </div>
+    </div>
+
+    <div id="auth-overlay" class="active">
+        <div class="auth-card">
+            <div id="auth-kicker" class="view-kicker">Welcome to GeoChat</div>
+            <h1 id="auth-title" class="auth-title">Sign in to start exploring</h1>
+            <div id="auth-subtitle" class="subtle-line auth-subtitle">Create a secure account, complete your traveler profile, and then jump into nearby chats and activities.</div>
+
+            <div id="auth-tabs" class="auth-tabs">
+                <button id="auth-login-tab" class="auth-tab active" type="button" onclick="showAuthView('login')">Login</button>
+                <button id="auth-register-tab" class="auth-tab" type="button" onclick="showAuthView('register')">Create Account</button>
+            </div>
+
+            <form id="login-form" class="auth-form active" onsubmit="submitLogin(event)">
+                <div class="auth-field">
+                    <label class="field-label" for="login-username">Username</label>
+                    <input id="login-username" class="auth-input" type="text" autocomplete="username" placeholder="Enter your username" required />
+                </div>
+                <div class="auth-field">
+                    <label class="field-label" for="login-password">Password</label>
+                    <input id="login-password" class="auth-input" type="password" autocomplete="current-password" placeholder="Enter your password" required />
+                </div>
+                <div class="auth-actions">
+                    <button id="login-submit-btn" class="join-btn" type="submit">Login</button>
+                </div>
+            </form>
+
+            <form id="register-form" class="auth-form" onsubmit="submitRegister(event)">
+                <div class="auth-field">
+                    <label class="field-label" for="register-username">Username</label>
+                    <input id="register-username" class="auth-input" type="text" autocomplete="username" placeholder="Choose a username" required />
+                </div>
+                <div class="auth-grid">
+                    <div class="auth-field">
+                        <label class="field-label" for="register-password">Password</label>
+                        <input id="register-password" class="auth-input" type="password" autocomplete="new-password" placeholder="At least 6 characters" required />
+                    </div>
+                    <div class="auth-field">
+                        <label class="field-label" for="register-confirm-password">Confirm Password</label>
+                        <input id="register-confirm-password" class="auth-input" type="password" autocomplete="new-password" placeholder="Repeat your password" required />
+                    </div>
+                </div>
+                <span class="auth-note">Passwords are hashed with bcrypt before storage, and your session is secured with a JWT.</span>
+                <div class="auth-actions">
+                    <button id="register-submit-btn" class="join-btn" type="submit">Create Account</button>
+                </div>
+            </form>
+
+            <form id="profile-form" class="auth-form" onsubmit="submitProfile(event)">
+                <div class="auth-preview">
+                    <img id="profile-preview-avatar" class="profile-avatar" src="" alt="Profile preview" />
+                    <div class="auth-preview-copy">
+                        <div class="auth-preview-title">Your Traveler Identity</div>
+                        <div id="profile-preview-meta" class="auth-preview-meta">Add the details other travelers will see when you join chats and activities.</div>
+                    </div>
+                </div>
+
+                <div id="profile-id-badge" class="auth-note"></div>
+
+                <div class="auth-grid">
+                    <div class="auth-field">
+                        <label class="field-label" for="profile-name-input">Full Name</label>
+                        <input id="profile-name-input" class="auth-input" type="text" placeholder="Your full name" required />
+                    </div>
+                    <div class="auth-field">
+                        <label class="field-label" for="profile-birthdate-input">Birth Date</label>
+                        <input id="profile-birthdate-input" class="auth-input" type="date" required />
+                    </div>
+                    <div class="auth-field">
+                        <label class="field-label" for="profile-gender-input">Gender</label>
+                        <select id="profile-gender-input" class="auth-select" required>
+                            <option value="">Select gender</option>
+                            <option value="male">Male</option>
+                            <option value="female">Female</option>
+                            <option value="non_binary">Non-binary</option>
+                            <option value="prefer_not_to_say">Prefer not to say</option>
+                        </select>
+                    </div>
+                    <div class="auth-field">
+                        <label class="field-label" for="profile-occupation-input">Occupation</label>
+                        <input id="profile-occupation-input" class="auth-input" type="text" placeholder="What do you do?" required />
+                    </div>
+                    <div class="auth-field full">
+                        <label class="field-label" for="profile-avatar-input">Profile Picture URL</label>
+                        <input id="profile-avatar-input" class="auth-input" type="url" placeholder="Paste a Cloudinary or S3 image URL" required />
+                        <span class="auth-note">Only the image URL is stored. Host the file in Cloudinary, S3, or another image service.</span>
+                    </div>
+                    <div class="auth-field full">
+                        <label class="field-label" for="profile-bio-input">Bio</label>
+                        <textarea id="profile-bio-input" class="auth-textarea" placeholder="Tell nearby travelers a bit about yourself." required></textarea>
+                    </div>
+                </div>
+
+                <div class="auth-actions">
+                    <button id="profile-submit-btn" class="join-btn" type="submit">Save Profile</button>
+                    <button id="profile-cancel-btn" class="secondary-btn" type="button" onclick="closeProfileEditor()">Cancel</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div id="map"></div>
+
+    <div id="activities-panel">
+        <div class="panel-header">
+            <div>
+                <div class="view-kicker">Nearby Activities</div>
+                <h3 class="panel-title">Switch between list and map</h3>
+                <div id="activities-panel-subtitle" class="panel-subtitle">Distances update from your current location.</div>
+            </div>
+            <button class="ghost-btn" type="button" onclick="setActivitiesView(false)">Back to Map</button>
+        </div>
+        <div id="activities-list"></div>
+    </div>
+
+    <div id="friends-drawer-scrim" class="drawer-scrim" onclick="closeFriendsDrawer()"></div>
+    <aside id="friends-drawer" class="side-drawer" aria-hidden="true">
+        <div class="drawer-header">
+            <div>
+                <div class="view-kicker">Your Circle</div>
+                <h3>Friends & Alerts</h3>
+                <div class="subtle-line">Manage requests, keep tabs on your added friends, and catch live activity updates.</div>
+            </div>
+            <button class="close-sheet" type="button" onclick="closeFriendsDrawer()">&times;</button>
+        </div>
+
+        <div class="drawer-tabs">
+            <button id="friends-tab-btn" class="drawer-tab active" type="button" onclick="setFriendsDrawerTab('friends')">Friends</button>
+            <button id="alerts-tab-btn" class="drawer-tab" type="button" onclick="setFriendsDrawerTab('alerts')">Alerts</button>
+        </div>
+
+        <div id="friends-drawer-friends" class="drawer-view active">
+            <div class="drawer-section">
+                <div class="drawer-section-title">Find travelers</div>
+                <div class="drawer-section-note">Search by name, username, or GeoChat ID.</div>
+                <input id="friend-search-input" class="auth-input drawer-search-input" type="text" placeholder="Search travelers" />
+                <div id="friend-search-results" class="drawer-list"></div>
+            </div>
+
+            <div class="drawer-section">
+                <div class="drawer-section-title">Incoming requests</div>
+                <div class="drawer-section-note">Accept requests from travelers who want to stay in touch.</div>
+                <div id="friend-incoming-list" class="drawer-list"></div>
+            </div>
+
+            <div class="drawer-section">
+                <div class="drawer-section-title">Added friends</div>
+                <div class="drawer-section-note">Accepted friends show their live map status here.</div>
+                <div id="friends-list" class="drawer-list"></div>
+            </div>
+
+            <div class="drawer-section">
+                <div class="drawer-section-title">Pending requests</div>
+                <div class="drawer-section-note">Requests you already sent stay here until they respond.</div>
+                <div id="friend-outgoing-list" class="drawer-list"></div>
+            </div>
+        </div>
+
+        <div id="friends-drawer-alerts" class="drawer-view">
+            <div class="drawer-section">
+                <div class="drawer-section-header">
+                    <div>
+                        <div class="drawer-section-title">Friend notifications</div>
+                        <div class="drawer-section-note">The bell count updates in real time whenever a friend joins a room or hosts an activity.</div>
+                    </div>
+                    <button class="ghost-btn drawer-action-btn" type="button" onclick="markAllFriendNotificationsRead()">Mark all read</button>
+                </div>
+                <div id="friend-notifications-list" class="drawer-list"></div>
+            </div>
+        </div>
+    </aside>
+
+    <div id="bottom-sheet">
+        <button class="close-sheet" onclick="closeSheet()">&times;</button>
+
+        <div id="info-view" class="sheet-view">
+            <div class="sheet-header">
+                <img id="place-img" class="place-circle" src="" alt="Selected place" />
+                <div>
+                    <div class="view-kicker">Regional Hub</div>
+                    <h2 id="place-name" style="margin:0; font-size:1.28rem; line-height:1.3;">Select a Spot</h2>
+                    <div id="place-meta" class="subtle-line">Tap a place or drop a pin to open its local vibe.</div>
+                    <div id="place-distance" class="distance-line"><span class="distance-dot"></span>Distance unavailable</div>
+                    <div id="trending-tag" class="trending-label">Drop a pin or tap a place to get started.</div>
+                </div>
+            </div>
+            <div class="action-grid">
+                <button id="join-btn" class="join-btn" onclick="joinRegionalChat()">Join 5 km Chat</button>
+                <button id="host-btn" class="secondary-btn" onclick="openHostActivityModal()">Host Activity Here</button>
+            </div>
+        </div>
+
+        <div id="activity-view" class="sheet-view">
+            <div class="activity-hero">
+                <div id="activity-theme-icon" class="theme-badge">?</div>
+                <div>
+                    <div id="activity-theme-pill" class="theme-pill">Coffee Meetup</div>
+                    <h2 id="activity-goal" style="margin:0 0 6px; font-size:1.22rem; line-height:1.35;">Activity Goal</h2>
+                    <div id="activity-place" class="subtle-line">Hosted nearby</div>
+                    <div id="activity-distance" class="distance-line"><span class="distance-dot"></span>Distance unavailable</div>
+                </div>
+            </div>
+
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <span>The Host</span>
+                    <strong id="activity-host">Traveler</strong>
+                </div>
+                <div class="stat-card">
+                    <span>Participants</span>
+                    <strong id="activity-count">0 going</strong>
+                </div>
+            </div>
+
+            <div class="goal-card">
+                <div class="view-kicker">The Goal</div>
+                <div id="activity-callout">Tell everyone what you want to do here.</div>
+            </div>
+
+            <div class="activity-detail-row">
+                <div id="activity-date-chip" class="activity-detail-chip"><span>&#128197;</span>Flexible day</div>
+                <div id="activity-age-chip" class="activity-detail-chip"><span>&#128101;</span>Ages 18-60 yrs</div>
+            </div>
+
+            <div class="avatar-section">
+                <div class="view-kicker">Travelers Going</div>
+                <div id="activity-avatars" class="avatar-strip"></div>
+                <div id="activity-participants" class="participants-copy">No one has joined yet.</div>
+            </div>
+
+            <div class="action-grid">
+                <button id="activity-join-btn" class="join-btn" onclick="joinSelectedActivity()">Join Activity</button>
+                <button id="activity-leave-btn" class="secondary-btn" onclick="leaveSelectedActivity()" style="display:none;">Leave Activity</button>
+            </div>
+
+            <div id="activity-host-controls" class="activity-host-controls" style="display:none;">
+                <button id="end-activity-btn" class="danger-btn" type="button" onclick="endSelectedActivity()">End Activity Early</button>
+            </div>
+        </div>
+
+        <div id="chat-interface" class="sheet-view">
+            <div class="chat-header">
+                <div>
+                    <div id="chat-room-title" class="chat-room-title">Chat</div>
+                    <div id="chat-room-meta" class="chat-room-meta"></div>
+                </div>
+                <div class="chat-header-actions">
+                    <button id="chat-end-activity-btn" class="danger-btn compact" type="button" onclick="endCurrentRoomActivity()" style="display:none;">End Activity</button>
+                    <button id="leave-chat-btn" class="ghost-btn" onclick="leaveCurrentChat()">Leave Chat</button>
+                </div>
+            </div>
+            <div id="messages"></div>
+            <div class="chat-compose">
+                <input id="msg-input" type="text" placeholder="Say something..." />
+                <button class="send-btn" onclick="sendMsg()">&rarr;</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="activity-modal" class="modal-overlay">
+        <div class="modal-card">
+            <button class="close-sheet modal-close" onclick="closeHostActivityModal()">&times;</button>
+            <div class="view-kicker">Host an Activity</div>
+            <h3>Start a meetup people can join</h3>
+            <div id="host-location-label" class="subtle-line">Pick a place first.</div>
+            <div id="activity-hosting-status" class="host-activity-status">Host up to 2 activities every 24 hours.</div>
+
+            <div id="theme-chooser" class="theme-chooser"></div>
+
+            <div class="activity-planner-section">
+                <div class="field-label">Pick a Day</div>
+                <div id="activity-date-selector" class="date-selector" role="radiogroup" aria-label="Choose the activity day"></div>
+            </div>
+
+            <div class="activity-planner-section">
+                <div class="slider-header">
+                    <div class="field-label">Age Range</div>
+                    <div id="activity-age-range-value" class="slider-value">18-60 yrs</div>
+                </div>
+                <div class="slider-shell">
+                    <div id="activity-age-slider"></div>
+                    <div class="auth-note planner-note">Choose the ages of travelers you want this meetup to fit.</div>
+                </div>
+            </div>
+
+            <label class="field-label" for="activity-goal-input">What is the plan?</label>
+            <textarea id="activity-goal-input" placeholder="Tell travelers what you want to do and when."></textarea>
+            <button id="create-activity-btn" class="join-btn" onclick="createActivity()">Create Activity Room</button>
+        </div>
+    </div>
+
+    <div id="activity-history-overlay" class="modal-overlay">
+        <div class="modal-card history-card">
+            <button class="close-sheet modal-close" onclick="closeActivityHistoryPage()">&times;</button>
+            <div class="view-kicker">Activity History</div>
+            <h3>Your past meetups</h3>
+            <div class="subtle-line">Ended activities stay here so you can look back at the meetups you wrapped up.</div>
+            <div id="activity-history-list" class="history-list"></div>
+        </div>
+    </div>
+
+    <div id="confirm-modal" class="modal-overlay">
+        <div class="modal-card">
+            <button class="close-sheet modal-close" onclick="resolveConfirmAction(false)">&times;</button>
+            <div class="view-kicker">Please Confirm</div>
+            <h3 id="confirm-title">Are you sure?</h3>
+            <div id="confirm-body" class="confirmation-copy">This action cannot be undone.</div>
+            <div class="confirm-actions">
+                <button class="secondary-btn" type="button" onclick="resolveConfirmAction(false)">Cancel</button>
+                <button id="confirm-submit-btn" class="danger-btn" type="button" onclick="resolveConfirmAction(true)">Confirm</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="success-overlay" class="success-overlay">
+        <div class="success-card">
+            <div class="success-ring">
+                <div class="success-check">&#10003;</div>
+            </div>
+            <div id="success-title" class="success-title">You're all set!</div>
+            <div id="success-copy" class="success-copy">Your hosting slot is free again.</div>
+        </div>
+    </div>
+
+    <div id="toast" class="toast"></div>
+
+    <audio id="join-sound" src="join.mp3" preload="auto"></audio>
+    <audio id="notify-sound" src="notify.mp3" preload="auto"></audio>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/noUiSlider/15.7.1/nouislider.min.js"></script>
+    <script>
+        const GOOGLE_MAPS_API_SRC = 'https://maps.googleapis.com/maps/api/js?key=YOURAPIKEY&libraries=places,visualization&callback=onGeoChatMapsReady';
+        const socket = io({ autoConnect: false });
+        const initialPath = window.location.pathname;
+        let authToken = localStorage.getItem('ghummy_token') || '';
+        let currentUserProfile = null;
+        let currentAuthView = 'login';
+        let profileEditorOpen = false;
+        let googleMapsReady = false;
+        let mapsScriptRequested = false;
+        let mapInitialized = false;
+        let map, service, geocoder, currentPlace = null, currentActivity = null, currentRoomId = null, currentRoomType = null;
+        let currentActivities = [], currentOccupancy = {}, pendingRoomRequestId = null, requestCounter = 0, selectedActivityTheme = 'coffee';
+        let pendingRequestTimer = null;
+        let clickMarker = null, clickMarkerPlace = null, toastTimer = null, isChatOpen = false;
+        let currentUserLocation = null, userLocationMarker = null, heatmapLayer = null, activitiesListVisible = false, geolocationWatchId = null;
+        let activityHostingStatus = null, activityHostingStatusError = '', activityHostingStatusLoading = false, hostingStatusRequestCounter = 0;
+        const activityPlannerDayCount = 5;
+        const activityAgeBounds = { min: 18, max: 60 };
+        let selectedActivityDateKey = '';
+        let selectedActivityAgeRange = { min: activityAgeBounds.min, max: activityAgeBounds.max };
+        let activityAgeSlider = null;
+        let deferredPostAuthPath = initialPath === '/activity-history' ? '/activity-history' : '';
+        let activityHistoryRequestCounter = 0;
+        let activityHistoryEntries = [];
+        let confirmResolver = null;
+        let successOverlayTimer = null;
+        let friendsDrawerOpen = false;
+        let friendsDrawerTab = 'friends';
+        let friendsSummaryRequestCounter = 0;
+        let friendSearchRequestCounter = 0;
+        let friendSearchTimer = null;
+        let friendsSummaryLoading = false;
+        let friendSearchLoading = false;
+        let friendsSummaryError = '';
+        let friendSearchError = '';
+        let friendConnections = [];
+        let incomingFriendRequests = [];
+        let outgoingFriendRequests = [];
+        let friendNotifications = [];
+        let friendNotificationUnreadCount = 0;
+        let friendSearchResults = [];
+        let friendSearchQuery = '';
+        const pendingFriendActionKeys = new Set();
+        let myAcceptedFriendIds = new Set();
+        let myOutgoingFriendRequestIds = new Set();
+        let currentRoomParticipants = [];
+        let currentRoomParticipantMap = new Map();
+
+        const markerMap = new Map();
+        const placeRoomMap = new Map();
+        const activityMarkers = new Map();
+        const activityById = new Map();
+
+        const categoryStyles = {
+            cafe: { color: '#ff7b54', background: '#fff1df', glyph: '\u2615', markerLabel: 'Cafe' },
+            restaurant: { color: '#ff5d73', background: '#ffe5ea', glyph: '\u{1F37D}\uFE0F', markerLabel: 'Food' },
+            temple: { color: '#9b5de5', background: '#f2e7ff', glyph: '\u{1F6D5}', markerLabel: 'Soul' },
+            tourist_attraction: { color: '#00b4d8', background: '#ddf8ff', glyph: '\u{1F4F8}', markerLabel: 'Wow' },
+            landmark: { color: '#ef476f', background: '#ffe3eb', glyph: '\u{1F4CD}', markerLabel: 'Icon' },
+            waterfall: { color: '#38bdf8', background: '#dff6ff', glyph: '\u{1F4A7}', markerLabel: 'Falls' },
+            museum: { color: '#8b5cf6', background: '#eee7ff', glyph: '\u{1F3DB}\uFE0F', markerLabel: 'Art' },
+            park: { color: '#22c55e', background: '#e8ffe8', glyph: '\u{1F333}', markerLabel: 'Park' },
+            monument: { color: '#ff6b6b', background: '#ffe6e6', glyph: '\u{1F3F0}', markerLabel: 'Story' },
+            amusement_park: { color: '#ff9f1c', background: '#fff2da', glyph: '\u{1F3A1}', markerLabel: 'Fun' },
+            aquarium: { color: '#00c2ff', background: '#dff8ff', glyph: '\u{1F420}', markerLabel: 'Aqua' },
+            zoo: { color: '#84cc16', background: '#f1ffd8', glyph: '\u{1F981}', markerLabel: 'Zoo' },
+            bar: { color: '#f15bb5', background: '#ffe0f2', glyph: '\u{1F379}', markerLabel: 'Sip' },
+            night_club: { color: '#7c3aed', background: '#efe5ff', glyph: '\u{1F3B5}', markerLabel: 'Night' },
+            shopping_mall: { color: '#fb7185', background: '#ffe3ea', glyph: '\u{1F6CD}\uFE0F', markerLabel: 'Shop' },
+            library: { color: '#f59e0b', background: '#fff3cf', glyph: '\u{1F4DA}', markerLabel: 'Books' },
+            campground: { color: '#16a34a', background: '#e7ffe9', glyph: '\u26FA', markerLabel: 'Camp' },
+            beach: { color: '#06b6d4', background: '#defafe', glyph: '\u{1F3D6}\uFE0F', markerLabel: 'Beach' }
+        };
+        const markerCategoryAliases = {
+            aquarium: 'aquarium',
+            amusement_park: 'amusement_park',
+            art_gallery: 'museum',
+            bakery: 'cafe',
+            bar: 'bar',
+            beach: 'beach',
+            book_store: 'library',
+            cafe: 'cafe',
+            campground: 'campground',
+            church: 'temple',
+            clothing_store: 'shopping_mall',
+            establishment: 'tourist_attraction',
+            hindu_temple: 'temple',
+            landmark: 'landmark',
+            library: 'library',
+            meal_delivery: 'restaurant',
+            meal_takeaway: 'restaurant',
+            monastery: 'temple',
+            monument: 'monument',
+            mosque: 'temple',
+            museum: 'museum',
+            natural_feature: 'waterfall',
+            night_club: 'night_club',
+            park: 'park',
+            place_of_worship: 'temple',
+            point_of_interest: 'tourist_attraction',
+            restaurant: 'restaurant',
+            shopping_mall: 'shopping_mall',
+            stadium: 'amusement_park',
+            store: 'shopping_mall',
+            synagogue: 'temple',
+            temple: 'temple',
+            tourist_attraction: 'tourist_attraction',
+            waterfall: 'waterfall',
+            zoo: 'zoo'
+        };
+
+        const hostActivityThemes = ['coffee', 'sports', 'snooker', 'fastfood', 'clubdrinks', 'swimming', 'dinner', 'tourist'];
+        const creatableActivityThemes = new Set(hostActivityThemes);
+        const activityThemes = {
+            coffee: { label: 'Coffee Meetup', buttonLabel: 'Coffee', glyph: '\u2615', color: '#b45309', background: '#ffedd5', action: 'Grab coffee' },
+            wine: { label: 'Wine Meetup', buttonLabel: 'Wine', glyph: '\u{1F377}', color: '#be185d', background: '#ffe4e6', action: 'Drink wine' },
+            mocktail: { label: 'Mocktail Meetup', buttonLabel: 'Mocktail', glyph: '\u{1F379}', color: '#0f766e', background: '#ccfbf1', action: 'Sip mocktails' },
+            sports: { label: 'Turf & Sports Meetup', buttonLabel: 'Turf & Sports', glyph: '\u26BD', color: '#15803d', background: '#dcfce7', action: 'Play turf and sports' },
+            snooker: { label: 'Snooker Meetup', buttonLabel: 'Snooker', glyph: '\u{1F3B1}', color: '#166534', background: '#dcfce7', action: 'Play snooker' },
+            fastfood: { label: 'Fast Food Meetup', buttonLabel: 'Fast Food', glyph: '\u{1F354}', color: '#c2410c', background: '#ffedd5', action: 'Grab fast food' },
+            clubdrinks: { label: 'Club&Drinks Meetup', buttonLabel: 'Club&Drinks', glyph: '\u{1F37B}', color: '#7c3aed', background: '#ede9fe', action: 'Go clubbing and grab drinks' },
+            swimming: { label: 'Swimming Meetup', buttonLabel: 'Swimming', glyph: '\u{1F3CA}', color: '#0369a1', background: '#e0f2fe', action: 'Go swimming' },
+            cafe: { label: 'Cafe Exploring', buttonLabel: 'Cafe Exploring', glyph: '\u{1F950}', color: '#92400e', background: '#fef3c7', action: 'Explore cafes' },
+            dinner: { label: 'Cafes & Restaurants Meetup', buttonLabel: 'Cafes & Restaurants', glyph: '\u{1F37D}\uFE0F', color: '#c2410c', background: '#ffedd5', action: 'Explore cafes and restaurants' },
+            tourist: { label: 'Travel Meetup', buttonLabel: 'Travel', glyph: '\u{1F5FA}\uFE0F', color: '#2563eb', background: '#dbeafe', action: 'Travel together' },
+            viewpoints: { label: 'Sunset Points Meetup', buttonLabel: 'Sunset Points', glyph: '\u{1F304}', color: '#0f766e', background: '#ccfbf1', action: 'Visit sunset points' },
+            cocktail: { label: 'Cocktail Meetup', buttonLabel: 'Cocktail', glyph: '\u{1F378}', color: '#0f766e', background: '#ccfbf1', action: 'Grab cocktails' }
+        };
+        const unknownActivityTheme = { label: 'Unknown Activity', buttonLabel: 'Unknown Activity', glyph: '?', color: '#64748b', background: '#e2e8f0', markerLabel: 'Vibe', action: 'Hang out' };
+
+        const markerSizes = { featured: 68, standard: 58, activity: 72, dropped: 62 };
+        const userLocationMarkerSize = { width: 34, height: 34 };
+        const featuredHubs = [];
+        const droppedPinStyle = { color: '#ff5a5f', glyph: '\u{1F4CD}', background: '#fff1f2', markerLabel: 'Pin' };
+        const cleanColorfulMapStyles = [
+            { elementType: 'geometry', stylers: [{ color: '#eef1dc' }] },
+            { elementType: 'labels.text.fill', stylers: [{ color: '#25476a' }] },
+            { elementType: 'labels.text.stroke', stylers: [{ color: '#fbfff6' }] },
+            { featureType: 'administrative.land_parcel', stylers: [{ visibility: 'off' }] },
+            { featureType: 'landscape.man_made', elementType: 'geometry', stylers: [{ color: '#f6efda' }] },
+            { featureType: 'landscape.natural', elementType: 'geometry', stylers: [{ color: '#8fd36d' }] },
+            { featureType: 'landscape.natural.terrain', elementType: 'geometry', stylers: [{ color: '#58a45c' }] },
+            { featureType: 'poi', elementType: 'labels.icon', stylers: [{ visibility: 'off' }] },
+            { featureType: 'poi.business', elementType: 'labels.text.fill', stylers: [{ color: '#6b7280' }] },
+            { featureType: 'poi.government', stylers: [{ visibility: 'off' }] },
+            { featureType: 'poi.medical', stylers: [{ visibility: 'off' }] },
+            { featureType: 'poi.place_of_worship', stylers: [{ visibility: 'off' }] },
+            { featureType: 'poi.school', stylers: [{ visibility: 'off' }] },
+            { featureType: 'poi.sports_complex', stylers: [{ visibility: 'off' }] },
+            { featureType: 'poi.attraction', elementType: 'labels.text.fill', stylers: [{ color: '#cc7a00' }] },
+            { featureType: 'poi.attraction', elementType: 'labels.text.stroke', stylers: [{ color: '#fff7e6' }] },
+            { featureType: 'poi.park', elementType: 'geometry', stylers: [{ color: '#65c85f' }] },
+            { featureType: 'poi.park', elementType: 'labels.text.fill', stylers: [{ color: '#22633a' }] },
+            { featureType: 'road', elementType: 'labels.icon', stylers: [{ visibility: 'off' }] },
+            { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#fffefb' }] },
+            { featureType: 'road.local', elementType: 'geometry.stroke', stylers: [{ color: '#d0d9c5' }] },
+            { featureType: 'road.arterial', elementType: 'geometry', stylers: [{ color: '#fff9e7' }] },
+            { featureType: 'road.arterial', elementType: 'geometry.stroke', stylers: [{ color: '#edc46f' }] },
+            { featureType: 'road.highway', elementType: 'geometry', stylers: [{ color: '#ffd86b' }] },
+            { featureType: 'road.highway', elementType: 'geometry.stroke', stylers: [{ color: '#d18d00' }] },
+            { featureType: 'transit', stylers: [{ visibility: 'off' }] },
+            { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#67c7ff' }] },
+            { featureType: 'water', elementType: 'labels.text.fill', stylers: [{ color: '#16618b' }] }
+        ];
+
+        function nextRequestId(prefix) { requestCounter += 1; return `${prefix}-${requestCounter}`; }
+        function trimToLength(value, maxLength) { return String(value || '').trim().slice(0, maxLength); }
+        function padDateValue(value) { return String(value).padStart(2, '0'); }
+
+        function toLocalDateKey(date) {
+            if (!(date instanceof Date) || Number.isNaN(date.getTime())) return '';
+            return `${date.getFullYear()}-${padDateValue(date.getMonth() + 1)}-${padDateValue(date.getDate())}`;
+        }
+
+        function parseLocalDateKey(dateKey) {
+            const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(dateKey || '').trim());
+            if (!match) return null;
+            const [, yearValue, monthValue, dayValue] = match;
+            const year = Number(yearValue);
+            const month = Number(monthValue);
+            const day = Number(dayValue);
+            const parsed = new Date(year, month - 1, day, 12, 0, 0, 0);
+            if (Number.isNaN(parsed.getTime())) return null;
+            if (parsed.getFullYear() !== year || parsed.getMonth() !== month - 1 || parsed.getDate() !== day) return null;
+            return parsed;
+        }
+
+        function getActivityDateOptions(baseDate = new Date()) {
+            const anchor = new Date(baseDate);
+            anchor.setHours(12, 0, 0, 0);
+            return Array.from({ length: activityPlannerDayCount }, (_, offset) => {
+                const nextDate = new Date(anchor);
+                nextDate.setDate(anchor.getDate() + offset);
+                return {
+                    key: toLocalDateKey(nextDate),
+                    dayNumber: nextDate.toLocaleDateString([], { day: 'numeric' }),
+                    monthName: nextDate.toLocaleDateString([], { month: 'short' }),
+                    label: offset === 0 ? 'Today' : nextDate.toLocaleDateString([], { weekday: 'short' }),
+                    fullLabel: nextDate.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })
+                };
+            });
+        }
+
+        function formatActivityDateLabel(dateKey, options = {}) {
+            const fallback = options.fallback || '';
+            const parsed = parseLocalDateKey(dateKey);
+            if (!parsed) return fallback;
+            const today = new Date();
+            today.setHours(12, 0, 0, 0);
+            const tomorrow = new Date(today);
+            tomorrow.setDate(today.getDate() + 1);
+            const todayKey = toLocalDateKey(today);
+            const tomorrowKey = toLocalDateKey(tomorrow);
+            if (dateKey === todayKey) return 'Today';
+            if (dateKey === tomorrowKey) return 'Tomorrow';
+            return parsed.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
+        }
+
+        function renderActivityDateOptions() {
+            const container = document.getElementById('activity-date-selector');
+            if (!container) return;
+            const options = getActivityDateOptions();
+            const availableKeys = new Set(options.map((option) => option.key));
+            if (!availableKeys.has(selectedActivityDateKey)) selectedActivityDateKey = options.length ? options[0].key : '';
+            container.innerHTML = options.map((option) => {
+                const isActive = option.key === selectedActivityDateKey;
+                const activeClass = isActive ? ' active' : '';
+                return `<button class="date-option${activeClass}" type="button" role="radio" aria-checked="${isActive}" aria-label="${escapeHtml(option.label)}, ${escapeHtml(option.fullLabel)}" data-date-key="${option.key}" onclick="setSelectedActivityDate('${option.key}')">
+                    <span class="date-option-kicker">${escapeHtml(option.label)}</span>
+                    <span class="date-option-day">${escapeHtml(option.dayNumber)}</span>
+                    <span class="date-option-month">${escapeHtml(option.monthName)}</span>
+                </button>`;
+            }).join('');
+        }
+
+        function setSelectedActivityDate(dateKey) {
+            selectedActivityDateKey = String(dateKey || '').trim();
+            document.querySelectorAll('.date-option').forEach((button) => {
+                const isActive = button.dataset.dateKey === selectedActivityDateKey;
+                button.classList.toggle('active', isActive);
+                button.setAttribute('aria-checked', String(isActive));
+            });
+        }
+
+        function normalizeActivityAgeRange(minValue, maxValue) {
+            const fallback = { min: activityAgeBounds.min, max: activityAgeBounds.max };
+            const parsedMin = Number(minValue);
+            const parsedMax = Number(maxValue);
+            if (!Number.isFinite(parsedMin) || !Number.isFinite(parsedMax)) return fallback;
+            const safeMin = Math.max(activityAgeBounds.min, Math.min(activityAgeBounds.max, Math.round(parsedMin)));
+            const safeMax = Math.max(activityAgeBounds.min, Math.min(activityAgeBounds.max, Math.round(parsedMax)));
+            return safeMin <= safeMax ? { min: safeMin, max: safeMax } : { min: safeMax, max: safeMin };
+        }
+
+        function getActivityAgeRange(activity) {
+            return normalizeActivityAgeRange(activity && activity.ageMin, activity && activity.ageMax);
+        }
+
+        function formatActivityAgeRange(range) {
+            return `${range.min}-${range.max} yrs`;
+        }
+
+        function updateActivityAgeRangeDisplay() {
+            const output = document.getElementById('activity-age-range-value');
+            if (output) output.innerText = formatActivityAgeRange(selectedActivityAgeRange);
+        }
+
+        function setSelectedActivityAgeRange(minValue, maxValue) {
+            selectedActivityAgeRange = normalizeActivityAgeRange(minValue, maxValue);
+            updateActivityAgeRangeDisplay();
+            if (activityAgeSlider && activityAgeSlider.noUiSlider) {
+                const [currentMin, currentMax] = activityAgeSlider.noUiSlider.get().map((value) => Number(value));
+                if (currentMin !== selectedActivityAgeRange.min || currentMax !== selectedActivityAgeRange.max) {
+                    activityAgeSlider.noUiSlider.set([selectedActivityAgeRange.min, selectedActivityAgeRange.max]);
+                }
+            }
+        }
+
+        function initializeActivityAgeSlider() {
+            activityAgeSlider = document.getElementById('activity-age-slider');
+            if (!activityAgeSlider || !(window.noUiSlider && typeof window.noUiSlider.create === 'function') || activityAgeSlider.noUiSlider) {
+                updateActivityAgeRangeDisplay();
+                return;
+            }
+            noUiSlider.create(activityAgeSlider, {
+                start: [selectedActivityAgeRange.min, selectedActivityAgeRange.max],
+                connect: true,
+                step: 1,
+                behaviour: 'tap-drag',
+                range: {
+                    min: activityAgeBounds.min,
+                    max: activityAgeBounds.max
+                }
+            });
+            activityAgeSlider.noUiSlider.on('update', (values) => {
+                selectedActivityAgeRange = normalizeActivityAgeRange(values[0], values[1]);
+                updateActivityAgeRangeDisplay();
+            });
+            updateActivityAgeRangeDisplay();
+        }
+
+        function resetActivityPlannerInputs() {
+            renderActivityDateOptions();
+            const options = getActivityDateOptions();
+            setSelectedActivityDate(options.length ? options[0].key : '');
+            setSelectedActivityAgeRange(activityAgeBounds.min, activityAgeBounds.max);
+        }
+
+        function buildActivityListMeta(activity) {
+            const ageRange = getActivityAgeRange(activity);
+            return [
+                activity.placeName || 'Nearby',
+                activity.host || 'Traveler',
+                formatActivityDateLabel(activity.scheduledFor, { fallback: 'Flexible day' }),
+                `Ages ${formatActivityAgeRange(ageRange)}`,
+                `${Number(activity.participantCount || 0)} going`
+            ].filter(Boolean).join(' \u00B7 ');
+        }
+
+        function buildActivityRoomMeta(activity) {
+            if (!activity) return '';
+            const theme = getThemeInfo(activity.theme);
+            const ageRange = getActivityAgeRange(activity);
+            return [
+                `${theme.label} hosted by ${activity.host || 'Traveler'}`,
+                activity.placeName || 'Nearby',
+                formatActivityDateLabel(activity.scheduledFor, { fallback: 'Flexible day' }),
+                `Ages ${formatActivityAgeRange(ageRange)}`
+            ].filter(Boolean).join(' \u00B7 ');
+        }
+
+        function isCurrentUserActivityHost(activity) {
+            return Boolean(
+                activity
+                && currentUserProfile
+                && String(activity.hostId || '') === String(currentUserProfile.id || '')
+            );
+        }
+
+        function formatDateTimeLabel(value) {
+            const parsed = value ? new Date(value) : null;
+            if (!(parsed instanceof Date) || Number.isNaN(parsed.getTime())) return 'Unknown time';
+            return parsed.toLocaleDateString([], {
+                month: 'short',
+                day: 'numeric',
+                year: 'numeric',
+                hour: 'numeric',
+                minute: '2-digit'
+            });
+        }
+
+        function renderActivityHistory() {
+            const container = document.getElementById('activity-history-list');
+            if (!container) return;
+            if (!activityHistoryEntries.length) {
+                container.innerHTML = '<div class="history-empty">No ended meetups yet. Once you wrap one up, it will show here.</div>';
+                return;
+            }
+
+            container.innerHTML = activityHistoryEntries.map((activity) => {
+                const theme = getThemeInfo(activity.theme);
+                const ageRange = getActivityAgeRange(activity);
+                const endedLabel = activity.endedByHost ? 'Ended early by you' : 'Auto-archived';
+                return `<div class="history-item">
+                    <div class="history-item-top">
+                        <div class="history-item-theme"><span>${escapeHtml(theme.glyph)}</span>${escapeHtml(theme.label)}</div>
+                        <div class="history-item-status">${escapeHtml(endedLabel)}</div>
+                    </div>
+                    <div class="history-item-goal">${escapeHtml(activity.goal || 'Past meetup')}</div>
+                    <div class="history-item-meta">${escapeHtml(activity.placeName || 'Nearby')} \u00B7 ${escapeHtml(formatActivityDateLabel(activity.scheduledFor, { fallback: 'Flexible day' }))} \u00B7 ${escapeHtml(`Ages ${formatActivityAgeRange(ageRange)}`)}</div>
+                    <div class="history-item-meta">Hosted: ${escapeHtml(formatDateTimeLabel(activity.createdAt))} \u00B7 Ended: ${escapeHtml(formatDateTimeLabel(activity.endedAt || activity.createdAt))} \u00B7 ${escapeHtml(String(activity.participantCount || 0))} traveler(s)</div>
+                </div>`;
+            }).join('');
+        }
+
+        async function loadActivityHistory() {
+            const container = document.getElementById('activity-history-list');
+            if (container) container.innerHTML = '<div class="history-loading">Loading your activity history...</div>';
+            const requestId = activityHistoryRequestCounter + 1;
+            activityHistoryRequestCounter = requestId;
+
+            try {
+                const response = await apiRequest('/api/activities/history');
+                if (requestId !== activityHistoryRequestCounter) return;
+                activityHistoryEntries = Array.isArray(response.activities) ? response.activities : [];
+                renderActivityHistory();
+            } catch (error) {
+                if (requestId !== activityHistoryRequestCounter) return;
+                if (container) container.innerHTML = `<div class="history-empty">${escapeHtml(error.message || 'Could not load your activity history right now.')}</div>`;
+            }
+        }
+
+        async function openActivityHistoryPage() {
+            if (!currentUserProfile || !currentUserProfile.isProfileComplete) {
+                deferredPostAuthPath = '/activity-history';
+                showAuthView(authToken ? 'profile' : 'login');
+                showToast('Log in to view your activity history.');
+                return;
+            }
+
+            document.getElementById('activity-history-overlay').classList.add('active');
+            window.history.replaceState({}, '', '/activity-history');
+            await loadActivityHistory();
+        }
+
+        function closeActivityHistoryPage(options = {}) {
+            document.getElementById('activity-history-overlay').classList.remove('active');
+            if (options.restoreRoute !== false && currentUserProfile && currentUserProfile.isProfileComplete) {
+                window.history.replaceState({}, '', '/');
+            }
+        }
+
+        function updateActivityHostControls(activity = currentActivity) {
+            const cardControls = document.getElementById('activity-host-controls');
+            const cardButton = document.getElementById('end-activity-btn');
+            const chatButton = document.getElementById('chat-end-activity-btn');
+            const canManage = Boolean(activity && isCurrentUserActivityHost(activity) && !activity.isExpired);
+
+            if (cardControls) cardControls.style.display = canManage ? 'block' : 'none';
+            if (cardButton) {
+                cardButton.disabled = false;
+                cardButton.innerText = 'End Activity Early';
+            }
+
+            const showChatButton = canManage && currentRoomType === 'activity' && currentRoomId === activity.id;
+            if (chatButton) {
+                chatButton.style.display = showChatButton ? 'inline-flex' : 'none';
+                chatButton.disabled = false;
+                chatButton.innerText = 'End Activity';
+            }
+        }
+
+        function promptForConfirmation(config = {}) {
+            const overlay = document.getElementById('confirm-modal');
+            const title = document.getElementById('confirm-title');
+            const body = document.getElementById('confirm-body');
+            const confirmButton = document.getElementById('confirm-submit-btn');
+
+            title.innerText = config.title || 'Are you sure?';
+            body.innerText = config.body || 'Please confirm this action.';
+            confirmButton.innerText = config.confirmLabel || 'Confirm';
+            overlay.classList.add('active');
+
+            return new Promise((resolve) => {
+                confirmResolver = resolve;
+            });
+        }
+
+        function resolveConfirmAction(confirmed) {
+            const overlay = document.getElementById('confirm-modal');
+            overlay.classList.remove('active');
+            if (!confirmResolver) return;
+            const resolver = confirmResolver;
+            confirmResolver = null;
+            resolver(Boolean(confirmed));
+        }
+
+        function showSuccessOverlay(message, detail) {
+            document.getElementById('success-title').innerText = message || "You're all set!";
+            document.getElementById('success-copy').innerText = detail || 'Your hosting slot is free again.';
+            const overlay = document.getElementById('success-overlay');
+            overlay.classList.add('active');
+            if (successOverlayTimer) clearTimeout(successOverlayTimer);
+            successOverlayTimer = setTimeout(() => overlay.classList.remove('active'), 2400);
+        }
+
+        function handleActivityEnded(data = {}) {
+            const endedId = String(data.activityId || data.roomId || '');
+            if (!endedId) return;
+
+            currentActivities = currentActivities.filter((activity) => activity.id !== endedId);
+            activityById.delete(endedId);
+            const marker = activityMarkers.get(endedId);
+            if (marker) {
+                marker.setMap(null);
+                activityMarkers.delete(endedId);
+            }
+
+            const wasCurrentActivity = currentActivity && currentActivity.id === endedId;
+            const wasCurrentRoom = currentRoomType === 'activity' && currentRoomId === endedId;
+
+            if (wasCurrentActivity) currentActivity = null;
+            if (wasCurrentRoom) {
+                currentRoomId = null;
+                currentRoomType = null;
+                isChatOpen = false;
+                document.getElementById('leave-chat-btn').disabled = false;
+                document.getElementById('leave-chat-btn').innerText = 'Leave Chat';
+            }
+
+            if (wasCurrentActivity || wasCurrentRoom) {
+                if (currentPlace) openPlaceCard(currentPlace);
+                else closeSheet();
+            }
+
+            updateActivitiesList();
+            refreshActivityMarkers();
+            updateActivityHostControls(null);
+
+            const endedBySelf = currentUserProfile && String(data.hostId || '') === String(currentUserProfile.id || '') && Boolean(data.endedByHost);
+            if (endedBySelf) refreshActivityHostingStatus();
+            if (!endedBySelf) {
+                showToast(data.endedByHost ? 'This activity was ended early by the host.' : 'This activity has ended.');
+            }
+        }
+
+        function formatRelativeTimeLabel(value) {
+            const parsed = value ? new Date(value) : null;
+            if (!(parsed instanceof Date) || Number.isNaN(parsed.getTime())) return 'Unknown time';
+            const diffMs = Date.now() - parsed.getTime();
+            if (diffMs < 60000) return 'Just now';
+            const minutes = Math.round(diffMs / 60000);
+            if (minutes < 60) return `${minutes}m ago`;
+            const hours = Math.round(minutes / 60);
+            if (hours < 24) return `${hours}h ago`;
+            const days = Math.round(hours / 24);
+            if (days < 7) return `${days}d ago`;
+            return parsed.toLocaleDateString([], { month: 'short', day: 'numeric' });
+        }
+
+        function buildFriendCardMeta(user) {
+            if (!user) return 'Traveler';
+            const parts = [];
+            if (user.occupation) parts.push(user.occupation);
+            if (Number.isFinite(user.age)) parts.push(`${user.age} yrs`);
+            if (user.username) parts.push(`@${user.username}`);
+            return parts.join(' · ') || 'Traveler';
+        }
+
+        function getFriendStatusClass(status = {}) {
+            if (status.code === 'hosting_activity') return 'hosting';
+            if (status.code === 'in_activity' || status.code === 'in_regional_chat') return 'activity';
+            if (status.code === 'exploring') return 'online';
+            return 'offline';
+        }
+
+        function getFriendAvatar(user) {
+            const label = user ? (user.name || user.username || 'Traveler') : 'Traveler';
+            return user && user.avatarUrl
+                ? user.avatarUrl
+                : buildFallbackArtwork(makeInitials(label), '#e8f0ff', '#2368d9');
+        }
+
+        function updateFriendNotificationBadge() {
+            const badge = document.getElementById('friend-notification-badge');
+            if (!badge) return;
+            const count = Math.max(0, Number(friendNotificationUnreadCount) || 0);
+            badge.innerText = count > 99 ? '99+' : String(count);
+            badge.classList.toggle('active', count > 0);
+        }
+
+        function getCurrentUserId() {
+            return currentUserProfile ? String(currentUserProfile.id || '').trim() : '';
+        }
+
+        function normalizeIdList(values) {
+            return Array.isArray(values)
+                ? values.map((value) => String(value || '').trim()).filter(Boolean)
+                : [];
+        }
+
+        function setCurrentRoomParticipants(participants = []) {
+            const currentUserId = getCurrentUserId();
+            currentRoomParticipants = Array.isArray(participants)
+                ? participants.map((entry) => {
+                    const userId = String(entry && entry.userId || '').trim();
+                    if (!userId) return null;
+                    return {
+                        userId,
+                        profileId: String(entry && entry.profileId || '').trim(),
+                        name: trimToLength(entry && (entry.name || entry.user || entry.username), 80) || 'Traveler',
+                        isCurrentUser: Boolean(entry && entry.isCurrentUser) || userId === currentUserId
+                    };
+                }).filter(Boolean)
+                : [];
+
+            currentRoomParticipantMap = new Map(currentRoomParticipants.map((entry) => [entry.userId, {
+                ...entry,
+                isFriend: !entry.isCurrentUser && myAcceptedFriendIds.has(entry.userId),
+                hasOutgoingRequest: !entry.isCurrentUser && myOutgoingFriendRequestIds.has(entry.userId)
+            }]));
+        }
+
+        function syncChatFriendStateFromSummary() {
+            myAcceptedFriendIds = new Set(friendConnections.map((entry) => String(entry && entry.user && entry.user.id || '').trim()).filter(Boolean));
+            myOutgoingFriendRequestIds = new Set(outgoingFriendRequests.map((entry) => String(entry && entry.user && entry.user.id || '').trim()).filter(Boolean));
+            setCurrentRoomParticipants(currentRoomParticipants);
+            refreshChatFriendButtons();
+        }
+
+        function applyRoomChatFriendState(data = {}) {
+            if (Array.isArray(data.acceptedFriendIds)) myAcceptedFriendIds = new Set(normalizeIdList(data.acceptedFriendIds));
+            if (Array.isArray(data.outgoingFriendRequestIds)) myOutgoingFriendRequestIds = new Set(normalizeIdList(data.outgoingFriendRequestIds));
+            setCurrentRoomParticipants(Array.isArray(data.participants) ? data.participants : []);
+        }
+
+        function getChatFriendButtonState(targetUserId) {
+            const normalizedTargetId = String(targetUserId || '').trim();
+            const currentUserId = getCurrentUserId();
+            if (!normalizedTargetId || !currentUserId || normalizedTargetId === currentUserId) return 'hidden';
+
+            const participant = currentRoomParticipantMap.get(normalizedTargetId) || null;
+            if ((participant && participant.isFriend) || myAcceptedFriendIds.has(normalizedTargetId)) return 'hidden';
+            if (pendingFriendActionKeys.has(`request:${normalizedTargetId}`)) return 'pending';
+            if ((participant && participant.hasOutgoingRequest) || myOutgoingFriendRequestIds.has(normalizedTargetId)) return 'requested';
+            return 'ready';
+        }
+
+        function resolveChatMessageUserId(message = {}) {
+            const explicitUserId = String(message && message.userId || '').trim();
+            if (explicitUserId) return explicitUserId;
+
+            const senderName = trimToLength(message && message.user, 80);
+            if (!senderName) return '';
+
+            const matches = currentRoomParticipants.filter((entry) => entry.name === senderName);
+            return matches.length === 1 ? matches[0].userId : '';
+        }
+
+        function buildChatFriendButtonMarkup(message = {}) {
+            const targetUserId = resolveChatMessageUserId(message);
+            const targetName = trimToLength(message && message.user, 80) || 'Traveler';
+            const state = getChatFriendButtonState(targetUserId);
+            if (state === 'hidden') return '';
+
+            const label = state === 'ready' ? '+' : (state === 'pending' ? '...' : 'Sent');
+            const title = state === 'ready'
+                ? `Add ${targetName} as a friend`
+                : (state === 'pending' ? 'Sending friend request' : 'Friend request sent');
+            const disabled = state === 'ready' ? '' : ' disabled';
+            const stateClass = state === 'ready' ? '' : ` ${state}`;
+
+            return `<button class="chat-friend-btn${stateClass}" type="button" title="${escapeHtml(title)}" aria-label="${escapeHtml(title)}" onclick="sendFriendRequest('${escapeHtml(targetUserId)}')"${disabled}>${escapeHtml(label)}</button>`;
+        }
+
+        function refreshChatFriendButtons(targetUserId = '') {
+            const normalizedTargetId = String(targetUserId || '').trim();
+            const slots = document.querySelectorAll('#messages .chat-friend-slot[data-user-id]');
+            slots.forEach((slot) => {
+                const userId = String(slot.getAttribute('data-user-id') || '').trim();
+                if (!userId || (normalizedTargetId && userId !== normalizedTargetId)) return;
+                slot.innerHTML = buildChatFriendButtonMarkup({
+                    userId,
+                    user: slot.getAttribute('data-user-name') || ''
+                });
+            });
+        }
+
+        function buildPersonCardMarkup(user, metaText) {
+            return `<div class="friend-card-user">
+                <img class="friend-card-avatar" src="${escapeHtml(getFriendAvatar(user))}" alt="${escapeHtml((user && user.name) || (user && user.username) || 'Traveler')}" />
+                <div class="friend-card-copy">
+                    <div class="friend-card-name">${escapeHtml((user && (user.name || user.username)) || 'Traveler')}</div>
+                    <div class="friend-card-meta">${escapeHtml(metaText || buildFriendCardMeta(user))}</div>
+                </div>
+            </div>`;
+        }
+
+        function renderFriendSearchResults() {
+            const container = document.getElementById('friend-search-results');
+            if (!container) return;
+
+            if (friendSearchLoading) {
+                container.innerHTML = '<div class="drawer-empty">Searching travelers...</div>';
+                return;
+            }
+
+            if (friendSearchError) {
+                container.innerHTML = `<div class="drawer-empty">${escapeHtml(friendSearchError)}</div>`;
+                return;
+            }
+
+            if (friendSearchQuery.trim().length < 2) {
+                container.innerHTML = '<div class="drawer-empty">Type at least 2 characters to search for friends.</div>';
+                return;
+            }
+
+            if (!friendSearchResults.length) {
+                container.innerHTML = '<div class="drawer-empty">No travelers matched that search.</div>';
+                return;
+            }
+
+            container.innerHTML = friendSearchResults.map((result) => {
+                const user = result.user || {};
+                const relationship = result.relationship || null;
+                const requestKey = `request:${user.id || ''}`;
+                const acceptKey = relationship ? `accept:${relationship.relationshipId || ''}` : '';
+
+                let actionMarkup = `<button class="join-btn drawer-action-btn" type="button" onclick="sendFriendRequest('${escapeHtml(user.id || '')}')"${pendingFriendActionKeys.has(requestKey) ? ' disabled' : ''}>${pendingFriendActionKeys.has(requestKey) ? 'Sending...' : 'Add Friend'}</button>`;
+                if (relationship && relationship.status === 'accepted') {
+                    actionMarkup = '<button class="ghost-btn drawer-action-btn" type="button" disabled>Friends</button>';
+                } else if (relationship && relationship.direction === 'outgoing') {
+                    actionMarkup = '<button class="ghost-btn drawer-action-btn" type="button" disabled>Requested</button>';
+                } else if (relationship && relationship.direction === 'incoming') {
+                    actionMarkup = `<button class="join-btn drawer-action-btn" type="button" onclick="acceptFriendRequest('${escapeHtml(relationship.relationshipId || '')}')"${pendingFriendActionKeys.has(acceptKey) ? ' disabled' : ''}>${pendingFriendActionKeys.has(acceptKey) ? 'Accepting...' : 'Accept'}</button>`;
+                }
+
+                return `<div class="search-card">
+                    <div class="search-card-top">
+                        ${buildPersonCardMarkup(user, buildFriendCardMeta(user))}
+                        <div class="search-card-actions">${actionMarkup}</div>
+                    </div>
+                </div>`;
+            }).join('');
+        }
+
+        function renderIncomingFriendRequests() {
+            const container = document.getElementById('friend-incoming-list');
+            if (!container) return;
+
+            if (friendsSummaryLoading && !incomingFriendRequests.length) {
+                container.innerHTML = '<div class="drawer-empty">Loading requests...</div>';
+                return;
+            }
+
+            if (!incomingFriendRequests.length) {
+                container.innerHTML = '<div class="drawer-empty">No incoming friend requests right now.</div>';
+                return;
+            }
+
+            container.innerHTML = incomingFriendRequests.map((entry) => {
+                const actionKey = `accept:${entry.relationshipId}`;
+                return `<div class="request-card">
+                    ${buildPersonCardMarkup(entry.user, `${buildFriendCardMeta(entry.user)} · Requested ${formatRelativeTimeLabel(entry.requestedAt)}`)}
+                    <div class="request-card-actions">
+                        <button class="join-btn drawer-action-btn" type="button" onclick="acceptFriendRequest('${escapeHtml(entry.relationshipId)}')"${pendingFriendActionKeys.has(actionKey) ? ' disabled' : ''}>${pendingFriendActionKeys.has(actionKey) ? 'Accepting...' : 'Accept'}</button>
+                    </div>
+                </div>`;
+            }).join('');
+        }
+
+        function renderOutgoingFriendRequests() {
+            const container = document.getElementById('friend-outgoing-list');
+            if (!container) return;
+
+            if (friendsSummaryLoading && !outgoingFriendRequests.length) {
+                container.innerHTML = '<div class="drawer-empty">Loading pending requests...</div>';
+                return;
+            }
+
+            if (!outgoingFriendRequests.length) {
+                container.innerHTML = '<div class="drawer-empty">No pending requests waiting on a response.</div>';
+                return;
+            }
+
+            container.innerHTML = outgoingFriendRequests.map((entry) => `<div class="request-card">
+                ${buildPersonCardMarkup(entry.user, `${buildFriendCardMeta(entry.user)} · Sent ${formatRelativeTimeLabel(entry.requestedAt)}`)}
+                <div class="request-card-actions">
+                    <button class="ghost-btn drawer-action-btn" type="button" disabled>Requested</button>
+                </div>
+            </div>`).join('');
+        }
+
+        function renderFriendConnections() {
+            const container = document.getElementById('friends-list');
+            if (!container) return;
+
+            if (friendsSummaryError && !friendConnections.length) {
+                container.innerHTML = `<div class="drawer-empty">${escapeHtml(friendsSummaryError)}</div>`;
+                return;
+            }
+
+            if (friendsSummaryLoading && !friendConnections.length) {
+                container.innerHTML = '<div class="drawer-empty">Loading your friends...</div>';
+                return;
+            }
+
+            if (!friendConnections.length) {
+                container.innerHTML = '<div class="drawer-empty">No added friends yet. Search for travelers above to start building your circle.</div>';
+                return;
+            }
+
+            container.innerHTML = friendConnections.map((entry) => {
+                const status = entry.status || {};
+                const statusClass = getFriendStatusClass(status);
+                const secondaryLine = status.code === 'offline' && status.lastSeen
+                    ? `Last seen ${formatRelativeTimeLabel(status.lastSeen)}`
+                    : buildFriendCardMeta(entry.user);
+                return `<div class="friend-card">
+                    <div class="friend-card-top">
+                        ${buildPersonCardMarkup(entry.user, secondaryLine)}
+                        <div class="friend-status-pill ${escapeHtml(statusClass)}">${escapeHtml(status.label || 'Offline')}</div>
+                    </div>
+                </div>`;
+            }).join('');
+        }
+
+        function renderFriendNotifications() {
+            const container = document.getElementById('friend-notifications-list');
+            if (!container) return;
+
+            if (friendsSummaryLoading && !friendNotifications.length) {
+                container.innerHTML = '<div class="drawer-empty">Loading notifications...</div>';
+                return;
+            }
+
+            if (!friendNotifications.length) {
+                container.innerHTML = '<div class="drawer-empty">No friend notifications yet. When friends host activities or join rooms, they will show up here.</div>';
+                return;
+            }
+
+            container.innerHTML = friendNotifications.map((notification) => {
+                const actor = notification.actor || null;
+                const metaText = actor ? buildFriendCardMeta(actor) : 'Friend update';
+                return `<div class="notification-card${notification.isRead ? '' : ' unread'}">
+                    ${buildPersonCardMarkup(actor, metaText)}
+                    <div class="friend-card-copy">
+                        <div class="notification-card-title">${escapeHtml(notification.title || 'Friend update')}</div>
+                        <div class="friend-card-meta">${escapeHtml(notification.body || '')}</div>
+                    </div>
+                    <div class="notification-card-time">${escapeHtml(formatRelativeTimeLabel(notification.createdAt))}</div>
+                </div>`;
+            }).join('');
+        }
+
+        function renderFriendsDrawer() {
+            renderFriendSearchResults();
+            renderIncomingFriendRequests();
+            renderOutgoingFriendRequests();
+            renderFriendConnections();
+            renderFriendNotifications();
+            updateFriendNotificationBadge();
+        }
+
+        function applyFriendSummary(summary = {}) {
+            friendConnections = Array.isArray(summary.friends) ? summary.friends : [];
+            incomingFriendRequests = Array.isArray(summary.incomingRequests) ? summary.incomingRequests : [];
+            outgoingFriendRequests = Array.isArray(summary.outgoingRequests) ? summary.outgoingRequests : [];
+            friendNotifications = Array.isArray(summary.notifications) ? summary.notifications : [];
+            friendNotificationUnreadCount = Number.isFinite(summary.unreadCount)
+                ? summary.unreadCount
+                : friendNotifications.filter((entry) => !entry.isRead).length;
+            friendsSummaryLoading = false;
+            friendsSummaryError = '';
+            syncChatFriendStateFromSummary();
+            renderFriendsDrawer();
+        }
+
+        function resetFriendState(options = {}) {
+            if (friendSearchTimer) {
+                clearTimeout(friendSearchTimer);
+                friendSearchTimer = null;
+            }
+            pendingFriendActionKeys.clear();
+            friendsSummaryLoading = false;
+            friendSearchLoading = false;
+            friendsSummaryError = '';
+            friendSearchError = '';
+            friendConnections = [];
+            incomingFriendRequests = [];
+            outgoingFriendRequests = [];
+            friendNotifications = [];
+            friendNotificationUnreadCount = 0;
+            friendSearchResults = [];
+            friendSearchQuery = '';
+            myAcceptedFriendIds = new Set();
+            myOutgoingFriendRequestIds = new Set();
+            const input = document.getElementById('friend-search-input');
+            if (input) input.value = '';
+            if (options.closeDrawer !== false) closeFriendsDrawer({ silent: true });
+            setCurrentRoomParticipants(currentRoomParticipants);
+            refreshChatFriendButtons();
+            renderFriendsDrawer();
+        }
+
+        function setFriendsDrawerTab(tab) {
+            friendsDrawerTab = tab === 'alerts' ? 'alerts' : 'friends';
+            document.getElementById('friends-tab-btn').classList.toggle('active', friendsDrawerTab === 'friends');
+            document.getElementById('alerts-tab-btn').classList.toggle('active', friendsDrawerTab === 'alerts');
+            document.getElementById('friends-drawer-friends').classList.toggle('active', friendsDrawerTab === 'friends');
+            document.getElementById('friends-drawer-alerts').classList.toggle('active', friendsDrawerTab === 'alerts');
+        }
+
+        function openFriendsDrawer(tab = 'friends') {
+            if (!currentUserProfile || !currentUserProfile.isProfileComplete) {
+                showAuthView(authToken ? 'profile' : 'login');
+                showToast('Sign in to use friends and notifications.');
+                return;
+            }
+
+            friendsDrawerOpen = true;
+            document.getElementById('friends-drawer').classList.add('active');
+            document.getElementById('friends-drawer').setAttribute('aria-hidden', 'false');
+            document.getElementById('friends-drawer-scrim').classList.add('active');
+            setFriendsDrawerTab(tab);
+            refreshFriendSummary();
+        }
+
+        function closeFriendsDrawer(options = {}) {
+            friendsDrawerOpen = false;
+            document.getElementById('friends-drawer').classList.remove('active');
+            document.getElementById('friends-drawer').setAttribute('aria-hidden', 'true');
+            document.getElementById('friends-drawer-scrim').classList.remove('active');
+            if (!options.silent && friendSearchTimer) {
+                clearTimeout(friendSearchTimer);
+                friendSearchTimer = null;
+            }
+        }
+
+        async function refreshFriendSummary() {
+            if (!authToken || !currentUserProfile || !currentUserProfile.isProfileComplete) {
+                resetFriendState({ closeDrawer: false });
+                return null;
+            }
+
+            const requestId = friendsSummaryRequestCounter + 1;
+            friendsSummaryRequestCounter = requestId;
+            friendsSummaryLoading = true;
+            friendsSummaryError = '';
+            renderFriendsDrawer();
+
+            try {
+                const summary = await apiRequest('/api/friends/summary');
+                if (requestId !== friendsSummaryRequestCounter) return null;
+                applyFriendSummary(summary);
+                return summary;
+            } catch (error) {
+                if (requestId !== friendsSummaryRequestCounter) return null;
+                friendsSummaryLoading = false;
+                friendsSummaryError = error.message || 'Could not load your friends right now.';
+                renderFriendsDrawer();
+                return null;
+            }
+        }
+
+        async function searchFriendDirectory(rawQuery) {
+            const query = trimToLength(rawQuery, 80);
+            friendSearchQuery = query;
+
+            if (query.length < 2) {
+                friendSearchLoading = false;
+                friendSearchError = '';
+                friendSearchResults = [];
+                renderFriendSearchResults();
+                return;
+            }
+
+            const requestId = friendSearchRequestCounter + 1;
+            friendSearchRequestCounter = requestId;
+            friendSearchLoading = true;
+            friendSearchError = '';
+            renderFriendSearchResults();
+
+            try {
+                const response = await apiRequest(`/api/users/search?q=${encodeURIComponent(query)}`);
+                if (requestId !== friendSearchRequestCounter) return;
+                friendSearchResults = Array.isArray(response.results) ? response.results : [];
+                friendSearchLoading = false;
+                friendSearchError = '';
+                renderFriendSearchResults();
+            } catch (error) {
+                if (requestId !== friendSearchRequestCounter) return;
+                friendSearchLoading = false;
+                friendSearchError = error.message || 'Could not search travelers right now.';
+                renderFriendSearchResults();
+            }
+        }
+
+        function handleFriendSearchInput() {
+            const input = document.getElementById('friend-search-input');
+            const nextValue = input ? input.value : '';
+            if (friendSearchTimer) clearTimeout(friendSearchTimer);
+            if (trimToLength(nextValue, 80).length < 2) {
+                searchFriendDirectory(nextValue);
+                return;
+            }
+            friendSearchTimer = setTimeout(() => searchFriendDirectory(nextValue), 180);
+        }
+
+        async function refreshFriendSearchIfNeeded() {
+            if (friendSearchQuery.trim().length >= 2) await searchFriendDirectory(friendSearchQuery);
+            else renderFriendSearchResults();
+        }
+
+        async function sendFriendRequest(targetUserId) {
+            const targetId = String(targetUserId || '').trim();
+            if (!targetId) return;
+            const actionKey = `request:${targetId}`;
+            if (pendingFriendActionKeys.has(actionKey)) return;
+
+            pendingFriendActionKeys.add(actionKey);
+            renderFriendSearchResults();
+            refreshChatFriendButtons(targetId);
+
+            try {
+                await apiRequest('/api/friends/requests', {
+                    method: 'POST',
+                    body: JSON.stringify({ targetUserId: targetId })
+                });
+                pendingFriendActionKeys.delete(actionKey);
+                myOutgoingFriendRequestIds.add(targetId);
+                setCurrentRoomParticipants(currentRoomParticipants);
+                refreshChatFriendButtons(targetId);
+                showToast('Friend request sent.');
+                await refreshFriendSummary();
+                await refreshFriendSearchIfNeeded();
+            } catch (error) {
+                const message = error && error.message ? error.message : 'Could not send that friend request right now.';
+                if (/already friends/i.test(message)) {
+                    myAcceptedFriendIds.add(targetId);
+                    setCurrentRoomParticipants(currentRoomParticipants);
+                } else if (/already sent/i.test(message)) {
+                    myOutgoingFriendRequestIds.add(targetId);
+                    setCurrentRoomParticipants(currentRoomParticipants);
+                }
+                if (/already friends|already sent|sent you a request/i.test(message)) {
+                    await refreshFriendSummary();
+                }
+                refreshChatFriendButtons(targetId);
+                showToast(message);
+            } finally {
+                pendingFriendActionKeys.delete(actionKey);
+                renderFriendsDrawer();
+                refreshChatFriendButtons(targetId);
+            }
+        }
+
+        async function acceptFriendRequest(relationshipId) {
+            const targetId = String(relationshipId || '').trim();
+            if (!targetId) return;
+            const actionKey = `accept:${targetId}`;
+            if (pendingFriendActionKeys.has(actionKey)) return;
+
+            pendingFriendActionKeys.add(actionKey);
+            renderFriendsDrawer();
+
+            try {
+                await apiRequest(`/api/friends/requests/${encodeURIComponent(targetId)}/accept`, {
+                    method: 'POST'
+                });
+                showToast('Friend request accepted.');
+                await refreshFriendSummary();
+                await refreshFriendSearchIfNeeded();
+            } catch (error) {
+                showToast(error.message);
+            } finally {
+                pendingFriendActionKeys.delete(actionKey);
+                renderFriendsDrawer();
+            }
+        }
+
+        async function markAllFriendNotificationsRead() {
+            const actionKey = 'notifications:read-all';
+            if (pendingFriendActionKeys.has(actionKey)) return;
+
+            pendingFriendActionKeys.add(actionKey);
+            renderFriendNotifications();
+
+            try {
+                const response = await apiRequest('/api/friends/notifications/read-all', {
+                    method: 'POST'
+                });
+                friendNotifications = Array.isArray(response.notifications) ? response.notifications : friendNotifications.map((entry) => ({ ...entry, isRead: true }));
+                friendNotificationUnreadCount = Number.isFinite(response.unreadCount) ? response.unreadCount : 0;
+                updateFriendNotificationBadge();
+                renderFriendNotifications();
+                showToast('Notifications marked as read.');
+            } catch (error) {
+                showToast(error.message);
+            } finally {
+                pendingFriendActionKeys.delete(actionKey);
+            }
+        }
+
+        function handleFriendNotification(data = {}) {
+            const notification = data.notification || null;
+            if (notification && notification.id) {
+                friendNotifications = [notification, ...friendNotifications.filter((entry) => entry.id !== notification.id)].slice(0, 30);
+            }
+            if (Number.isFinite(data.unreadCount)) friendNotificationUnreadCount = data.unreadCount;
+            else friendNotificationUnreadCount += 1;
+            updateFriendNotificationBadge();
+            renderFriendNotifications();
+
+            const message = notification && (notification.body || notification.title);
+            if (message) showToast(message);
+        }
+
+        function haversineDistanceKm(lat1, lng1, lat2, lng2) {
+            if (![lat1, lng1, lat2, lng2].every((value) => Number.isFinite(value))) return null;
+            const toRadians = (degrees) => (degrees * Math.PI) / 180;
+            const earthRadius = 6371;
+            const latDelta = toRadians(lat2 - lat1);
+            const lngDelta = toRadians(lng2 - lng1);
+            const a = Math.sin(latDelta / 2) ** 2
+                + Math.cos(toRadians(lat1)) * Math.cos(toRadians(lat2)) * Math.sin(lngDelta / 2) ** 2;
+            return 2 * earthRadius * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        }
+
+        function formatDistanceLabel(distanceKm) {
+            if (!Number.isFinite(distanceKm)) return 'Distance unavailable';
+            if (distanceKm < 1) return `${Math.max(50, Math.round(distanceKm * 1000))}m away`;
+            return `${distanceKm < 10 ? distanceKm.toFixed(1) : Math.round(distanceKm)}km away`;
+        }
+
+        function getEntityCoordinates(entity) {
+            if (!entity) return null;
+
+            if (Number.isFinite(entity.lat) && Number.isFinite(entity.lng)) {
+                return { lat: entity.lat, lng: entity.lng };
+            }
+
+            if (entity.geometry && entity.geometry.location) {
+                const location = entity.geometry.location;
+                const lat = typeof location.lat === 'function' ? location.lat() : location.lat;
+                const lng = typeof location.lng === 'function' ? location.lng() : location.lng;
+                if (Number.isFinite(lat) && Number.isFinite(lng)) return { lat, lng };
+            }
+
+            return null;
+        }
+
+        function getDistanceToEntity(entity) {
+            if (!currentUserLocation) return null;
+            const coords = getEntityCoordinates(entity);
+            if (!coords) return null;
+            return haversineDistanceKm(currentUserLocation.lat, currentUserLocation.lng, coords.lat, coords.lng);
+        }
+
+        function updateDistanceLine(elementId, entity) {
+            const line = document.getElementById(elementId);
+            if (!line) return;
+            line.innerHTML = `<span class="distance-dot"></span>${escapeHtml(formatDistanceLabel(getDistanceToEntity(entity)))}`;
+        }
+
+        function upsertCurrentLocationMarker() {
+            if (!map || !currentUserLocation || !(window.google && google.maps)) return;
+            const position = { lat: currentUserLocation.lat, lng: currentUserLocation.lng };
+            if (!userLocationMarker) {
+                userLocationMarker = new google.maps.Marker({
+                    position,
+                    map,
+                    title: 'You are here',
+                    zIndex: 1400,
+                    icon: buildUserLocationIcon()
+                });
+                return;
+            }
+            userLocationMarker.setPosition(position);
+            userLocationMarker.setIcon(buildUserLocationIcon());
+            userLocationMarker.setMap(map);
+        }
+
+        function updateActivitiesList() {
+            const container = document.getElementById('activities-list');
+            if (!container) return;
+
+            const sortedActivities = [...currentActivities].sort((left, right) => {
+                const leftDistance = getDistanceToEntity(left);
+                const rightDistance = getDistanceToEntity(right);
+                if (leftDistance === null && rightDistance === null) return 0;
+                if (leftDistance === null) return 1;
+                if (rightDistance === null) return -1;
+                return leftDistance - rightDistance;
+            });
+
+            document.getElementById('activities-panel-subtitle').innerText = currentUserLocation
+                ? 'Distances update from your current location.'
+                : 'Allow location access to sort activities by distance.';
+
+            if (!sortedActivities.length) {
+                container.innerHTML = '<div class="activity-list-empty">No live activities nearby yet. Create one to get the map moving.</div>';
+                return;
+            }
+
+            container.innerHTML = sortedActivities.map((activity) => {
+                const theme = getThemeInfo(activity.theme);
+                const distance = formatDistanceLabel(getDistanceToEntity(activity));
+                return `<button class="activity-list-card" type="button" onclick="openActivityFromList('${escapeHtml(activity.id)}')">
+                    <div class="activity-list-top">
+                        <div class="activity-list-theme"><span>${escapeHtml(theme.glyph)}</span>${escapeHtml(theme.label)}</div>
+                        <div class="activity-list-distance">${escapeHtml(distance)}</div>
+                    </div>
+                    <div class="activity-list-goal">${escapeHtml(activity.goal)}</div>
+                    <div class="activity-list-meta">${escapeHtml(buildActivityListMeta(activity))}</div>
+                </button>`;
+            }).join('');
+        }
+
+        function setActivitiesView(visible) {
+            activitiesListVisible = visible;
+            document.getElementById('activities-panel').classList.toggle('active', visible);
+            document.body.classList.toggle('list-view-active', visible);
+            document.getElementById('view-toggle-btn').innerText = visible ? 'Show Map' : 'Show Activity List';
+            if (visible) {
+                closeSheet();
+                updateActivitiesList();
+            }
+        }
+
+        function toggleActivitiesView() {
+            setActivitiesView(!activitiesListVisible);
+        }
+
+        function openActivityFromList(activityId) {
+            const activity = activityById.get(activityId);
+            if (!activity) return;
+            setActivitiesView(false);
+            if (map) map.panTo({ lat: activity.lat, lng: activity.lng });
+            openActivityCard(activity);
+        }
+
+        function updateHeatmapLayer(points) {
+            if (!map || !(window.google && google.maps && google.maps.visualization)) return;
+            const heatmapData = (points || []).map((point) => new google.maps.LatLng(point.lat, point.lng));
+            if (!heatmapLayer) {
+                heatmapLayer = new google.maps.visualization.HeatmapLayer({
+                    data: heatmapData,
+                    radius: 34,
+                    opacity: 0.6,
+                    dissipating: true,
+                    gradient: [
+                        'rgba(34,197,94,0)',
+                        'rgba(56,189,248,0.45)',
+                        'rgba(59,130,246,0.65)',
+                        'rgba(99,102,241,0.78)',
+                        'rgba(249,115,22,0.88)'
+                    ]
+                });
+                heatmapLayer.setMap(map);
+                return;
+            }
+            heatmapLayer.setData(heatmapData);
+            heatmapLayer.setMap(map);
+        }
+
+        function updateLocationDependentUi() {
+            if (currentPlace && document.getElementById('info-view').style.display !== 'none') updatePlaceCard();
+            if (currentActivity && document.getElementById('activity-view').style.display !== 'none') renderActivityCard(currentActivity);
+            updateActivitiesList();
+        }
+
+        function handleLocationUpdate(lat, lng, options = {}) {
+            if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+            currentUserLocation = { lat, lng };
+            upsertCurrentLocationMarker();
+            if (map && options.centerMap !== false) {
+                map.panTo(currentUserLocation);
+                if (!options.keepZoom && (!map.getZoom() || map.getZoom() < 14)) map.setZoom(14);
+            }
+            if (socket.connected) socket.emit('update-user-location', currentUserLocation);
+            updateLocationDependentUi();
+        }
+
+        function startLocationTracking() {
+            if (geolocationWatchId !== null || !(navigator && navigator.geolocation)) return;
+
+            geolocationWatchId = navigator.geolocation.watchPosition((position) => {
+                handleLocationUpdate(position.coords.latitude, position.coords.longitude, { centerMap: !mapInitialized || !currentUserLocation });
+            }, () => {
+                if (!currentUserLocation) showToast('Location access was skipped. Distance labels may be unavailable.');
+            }, {
+                enableHighAccuracy: true,
+                maximumAge: 60000,
+                timeout: 10000
+            });
+        }
+
+        function stopLocationTracking() {
+            if (geolocationWatchId === null || !(navigator && navigator.geolocation)) return;
+            navigator.geolocation.clearWatch(geolocationWatchId);
+            geolocationWatchId = null;
+        }
+
+        function formatGender(value) {
+            if (value === 'non_binary') return 'Non-binary';
+            if (value === 'prefer_not_to_say') return 'Prefer not to say';
+            return value ? value.charAt(0).toUpperCase() + value.slice(1) : '';
+        }
+
+        function buildProfileMeta(user) {
+            if (!user) return 'Complete your profile to start exploring.';
+            const parts = [];
+            if (user.occupation) parts.push(user.occupation);
+            if (Number.isFinite(user.age)) parts.push(`${user.age} yrs`);
+            if (user.gender) parts.push(formatGender(user.gender));
+            return parts.join(' · ') || 'Traveler profile';
+        }
+
+        function ensureUserName() {
+            const nextName = currentUserProfile ? ((currentUserProfile.name || currentUserProfile.username || '').trim()) : '';
+            if (nextName) {
+                localStorage.setItem('ghummy_user', nextName);
+                return nextName;
+            }
+            showAuthView(authToken ? 'profile' : 'login');
+            showToast('Sign in and finish your profile first.');
+            return '';
+        }
+
+        function cacheUserProfile(token, user) {
+            authToken = token || '';
+            currentUserProfile = user || null;
+            activityHostingStatus = null;
+            activityHostingStatusError = '';
+            activityHostingStatusLoading = false;
+            hostingStatusRequestCounter += 1;
+            activityHistoryEntries = [];
+            resetFriendState();
+
+            if (authToken) localStorage.setItem('ghummy_token', authToken);
+            else localStorage.removeItem('ghummy_token');
+
+            if (currentUserProfile) localStorage.setItem('ghummy_user', ensureUserName());
+            else localStorage.removeItem('ghummy_user');
+
+            updateActivityHostingUi();
+            updateProfileChip();
+            fillProfileForm(currentUserProfile);
+        }
+
+        function updateProfilePreview() {
+            const name = trimToLength(document.getElementById('profile-name-input').value, 80) || (currentUserProfile ? (currentUserProfile.name || currentUserProfile.username) : 'Traveler');
+            const occupation = trimToLength(document.getElementById('profile-occupation-input').value, 80);
+            const avatarUrl = trimToLength(document.getElementById('profile-avatar-input').value, 400);
+            const previewAvatar = document.getElementById('profile-preview-avatar');
+            previewAvatar.src = avatarUrl || buildFallbackArtwork(makeInitials(name), '#e8f0ff', '#2368d9');
+            document.getElementById('profile-preview-meta').innerText = occupation ? `${name} · ${occupation}` : `${name} · Finish your traveler identity`;
+        }
+
+        function fillProfileForm(user) {
+            if (!user) return;
+            document.getElementById('profile-name-input').value = user.name || '';
+            document.getElementById('profile-birthdate-input').value = user.birthDate || '';
+            document.getElementById('profile-gender-input').value = user.gender || '';
+            document.getElementById('profile-occupation-input').value = user.occupation || '';
+            document.getElementById('profile-avatar-input').value = user.avatarUrl || '';
+            document.getElementById('profile-bio-input').value = user.bio || '';
+            document.getElementById('profile-id-badge').innerText = user.profileId ? `GeoChat ID: ${user.profileId}` : '';
+            updateProfilePreview();
+        }
+
+        function updateProfileChip() {
+            const chip = document.getElementById('profile-chip');
+            if (!currentUserProfile || !currentUserProfile.isProfileComplete) {
+                chip.classList.remove('active');
+                document.body.classList.remove('user-ready');
+                return;
+            }
+
+            document.body.classList.add('user-ready');
+            chip.classList.add('active');
+            document.getElementById('profile-name').innerText = currentUserProfile.name || currentUserProfile.username || 'Traveler';
+            document.getElementById('profile-meta').innerText = buildProfileMeta(currentUserProfile);
+            document.getElementById('profile-avatar').src = currentUserProfile.avatarUrl || buildFallbackArtwork(makeInitials(currentUserProfile.name || currentUserProfile.username), '#e8f0ff', '#2368d9');
+        }
+
+        function setAuthButtonState(buttonId, isBusy, busyLabel) {
+            const button = document.getElementById(buttonId);
+            if (!button) return;
+            if (!button.dataset.defaultLabel) button.dataset.defaultLabel = button.innerText;
+            button.disabled = isBusy;
+            button.innerText = isBusy ? busyLabel : button.dataset.defaultLabel;
+        }
+
+        async function apiRequest(url, options = {}) {
+            const headers = { ...(options.headers || {}) };
+            if (options.body) headers['Content-Type'] = 'application/json';
+            if (authToken) headers.Authorization = `Bearer ${authToken}`;
+
+            const response = await fetch(url, { ...options, headers });
+            const data = await response.json().catch(() => ({}));
+
+            if (!response.ok) throw new Error(data.message || 'Request failed.');
+            return data;
+        }
+
+        function loadGoogleMapsScript() {
+            if (mapInitialized) return;
+            if (googleMapsReady) {
+                initMap();
+                return;
+            }
+            if (mapsScriptRequested) return;
+            mapsScriptRequested = true;
+            const script = document.createElement('script');
+            script.src = GOOGLE_MAPS_API_SRC;
+            script.async = true;
+            script.defer = true;
+            document.body.appendChild(script);
+        }
+
+        function connectAuthenticatedSocket() {
+            if (!authToken || !currentUserProfile || !currentUserProfile.isProfileComplete) return;
+            socket.auth = { token: authToken };
+            if (!socket.connected) socket.connect();
+            else if (currentUserLocation) socket.emit('update-user-location', currentUserLocation);
+        }
+
+        function enterAuthenticatedExperience() {
+            if (!currentUserProfile || !currentUserProfile.isProfileComplete) return;
+            document.getElementById('auth-overlay').classList.remove('active');
+            document.getElementById('profile-cancel-btn').style.display = 'none';
+            profileEditorOpen = false;
+            const shouldOpenHistoryPage = deferredPostAuthPath === '/activity-history';
+            window.history.replaceState({}, '', shouldOpenHistoryPage ? '/activity-history' : '/');
+            updateProfileChip();
+            connectAuthenticatedSocket();
+            loadGoogleMapsScript();
+            startLocationTracking();
+            refreshFriendSummary();
+            if (shouldOpenHistoryPage) {
+                deferredPostAuthPath = '';
+                openActivityHistoryPage();
+            }
+        }
+
+        function showAuthView(view) {
+            currentAuthView = view;
+            const overlay = document.getElementById('auth-overlay');
+            const tabs = document.getElementById('auth-tabs');
+            const loginForm = document.getElementById('login-form');
+            const registerForm = document.getElementById('register-form');
+            const profileForm = document.getElementById('profile-form');
+            const title = document.getElementById('auth-title');
+            const subtitle = document.getElementById('auth-subtitle');
+            const kicker = document.getElementById('auth-kicker');
+            const cancelProfileBtn = document.getElementById('profile-cancel-btn');
+
+            overlay.classList.add('active');
+            loginForm.classList.toggle('active', view === 'login');
+            registerForm.classList.toggle('active', view === 'register');
+            profileForm.classList.toggle('active', view === 'profile');
+            document.getElementById('auth-login-tab').classList.toggle('active', view === 'login');
+            document.getElementById('auth-register-tab').classList.toggle('active', view === 'register');
+
+            if (view === 'profile') {
+                tabs.style.display = 'none';
+                cancelProfileBtn.style.display = profileEditorOpen && currentUserProfile && currentUserProfile.isProfileComplete ? 'block' : 'none';
+                kicker.innerText = profileEditorOpen ? 'Edit Your Profile' : 'Complete Your Profile';
+                title.innerText = profileEditorOpen ? 'Update your traveler card' : 'Finish your profile before entering';
+                subtitle.innerText = 'Add the identity details other travelers will see when you join chats and activities.';
+                if (currentUserProfile) fillProfileForm(currentUserProfile);
+                window.history.replaceState({}, '', '/complete-profile');
+                return;
+            }
+
+            profileEditorOpen = false;
+            cancelProfileBtn.style.display = 'none';
+            tabs.style.display = 'flex';
+            kicker.innerText = 'Welcome to GeoChat';
+            if (view === 'register') {
+                title.innerText = 'Create your secure traveler account';
+                subtitle.innerText = 'Pick a username and password first. After that, you will complete your public profile.';
+                window.history.replaceState({}, '', '/signup');
+            } else {
+                title.innerText = 'Sign in to start exploring';
+                subtitle.innerText = 'Log in with your username and password to access nearby chats and activity rooms.';
+                window.history.replaceState({}, '', '/login');
+            }
+        }
+
+        function openProfileEditor() {
+            profileEditorOpen = true;
+            showAuthView('profile');
+        }
+
+        function closeProfileEditor() {
+            profileEditorOpen = false;
+            if (currentUserProfile && currentUserProfile.isProfileComplete) {
+                document.getElementById('auth-overlay').classList.remove('active');
+                window.history.replaceState({}, '', '/');
+            } else {
+                showAuthView('login');
+            }
+        }
+
+        async function submitLogin(event) {
+            event.preventDefault();
+            setAuthButtonState('login-submit-btn', true, 'Logging In...');
+
+            try {
+                const response = await apiRequest('/api/auth/login', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        username: document.getElementById('login-username').value.trim(),
+                        password: document.getElementById('login-password').value
+                    })
+                });
+
+                cacheUserProfile(response.token, response.user);
+                if (response.user.isProfileComplete) enterAuthenticatedExperience();
+                else showAuthView('profile');
+                showToast(response.user.isProfileComplete ? 'Welcome back.' : 'Finish your profile to enter GeoChat.');
+            } catch (error) {
+                showToast(error.message);
+            } finally {
+                setAuthButtonState('login-submit-btn', false);
+            }
+        }
+
+        async function submitRegister(event) {
+            event.preventDefault();
+            const password = document.getElementById('register-password').value;
+            const confirmPassword = document.getElementById('register-confirm-password').value;
+            if (password !== confirmPassword) {
+                showToast('Passwords do not match.');
+                return;
+            }
+
+            setAuthButtonState('register-submit-btn', true, 'Creating...');
+
+            try {
+                const response = await apiRequest('/api/auth/register', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        username: document.getElementById('register-username').value.trim(),
+                        password
+                    })
+                });
+
+                cacheUserProfile(response.token, response.user);
+                showAuthView('profile');
+                showToast('Account created. Complete your profile.');
+            } catch (error) {
+                showToast(error.message);
+            } finally {
+                setAuthButtonState('register-submit-btn', false);
+            }
+        }
+
+        async function submitProfile(event) {
+            event.preventDefault();
+            const wasEditing = profileEditorOpen && currentUserProfile && currentUserProfile.isProfileComplete;
+            setAuthButtonState('profile-submit-btn', true, wasEditing ? 'Saving...' : 'Finishing...');
+
+            try {
+                const response = await apiRequest('/api/auth/profile', {
+                    method: 'PUT',
+                    body: JSON.stringify({
+                        name: document.getElementById('profile-name-input').value.trim(),
+                        birthDate: document.getElementById('profile-birthdate-input').value,
+                        gender: document.getElementById('profile-gender-input').value,
+                        occupation: document.getElementById('profile-occupation-input').value.trim(),
+                        avatarUrl: document.getElementById('profile-avatar-input').value.trim(),
+                        bio: document.getElementById('profile-bio-input').value.trim()
+                    })
+                });
+
+                cacheUserProfile(response.token, response.user);
+                enterAuthenticatedExperience();
+                showToast(wasEditing ? 'Profile updated.' : 'Profile saved. Welcome to GeoChat.');
+            } catch (error) {
+                showToast(error.message);
+            } finally {
+                setAuthButtonState('profile-submit-btn', false);
+            }
+        }
+
+        async function restoreSession() {
+            if (!authToken) {
+                showAuthView(initialPath === '/signup' ? 'register' : 'login');
+                return;
+            }
+
+            try {
+                const response = await apiRequest('/api/auth/me');
+                cacheUserProfile(response.token, response.user);
+                if (response.user.isProfileComplete) enterAuthenticatedExperience();
+                else showAuthView('profile');
+            } catch (error) {
+                cacheUserProfile('', null);
+                showAuthView(initialPath === '/signup' ? 'register' : 'login');
+            }
+        }
+
+        function logoutUser() {
+            cacheUserProfile('', null);
+            currentRoomId = null;
+            currentRoomType = null;
+            currentActivity = null;
+            isChatOpen = false;
+            closeActivityHistoryPage({ restoreRoute: false });
+            document.getElementById('success-overlay').classList.remove('active');
+            currentUserLocation = null;
+            if (userLocationMarker) userLocationMarker.setMap(null);
+            if (heatmapLayer) heatmapLayer.setData([]);
+            stopLocationTracking();
+            if (socket.connected) socket.disconnect();
+            closeSheet();
+            closeFriendsDrawer({ silent: true });
+            setActivitiesView(false);
+            showAuthView('login');
+            showToast('Logged out.');
+        }
+
+        function onGeoChatMapsReady() {
+            googleMapsReady = true;
+            initMap();
+        }
+
+        window.onGeoChatMapsReady = onGeoChatMapsReady;
+
+        function escapeHtml(value) {
+            return String(value || '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+
+        function showToast(message) {
+            const toast = document.getElementById('toast');
+            toast.innerText = message;
+            toast.classList.add('active');
+            if (toastTimer) clearTimeout(toastTimer);
+            toastTimer = setTimeout(() => toast.classList.remove('active'), 2400);
+        }
+
+        function formatDurationCompact(ms) {
+            const totalMinutes = Math.max(1, Math.ceil(Math.max(0, Number(ms) || 0) / 60000));
+            const hours = Math.floor(totalMinutes / 60);
+            const minutes = totalMinutes % 60;
+
+            if (hours >= 24) {
+                const days = Math.floor(hours / 24);
+                const remainingHours = hours % 24;
+                if (remainingHours) return `${days}d ${remainingHours}h`;
+                return `${days}d`;
+            }
+
+            if (hours && minutes) return `${hours}h ${minutes}m`;
+            if (hours) return `${hours}h`;
+            return `${totalMinutes}m`;
+        }
+
+        function updateActivityHostingUi() {
+            const statusEl = document.getElementById('activity-hosting-status');
+            const createBtn = document.getElementById('create-activity-btn');
+            if (!statusEl || !createBtn) return;
+
+            let message = 'Host up to 2 activities every 24 hours.';
+            let createDisabled = false;
+            let createLabel = 'Create Activity Room';
+
+            statusEl.className = 'host-activity-status';
+
+            if (activityHostingStatusLoading) {
+                message = 'Checking how many activities you can still host...';
+                createDisabled = true;
+                createLabel = 'Checking availability...';
+                statusEl.classList.add('loading');
+            } else if (activityHostingStatusError) {
+                message = activityHostingStatusError;
+            } else if (activityHostingStatus && activityHostingStatus.isLimited) {
+                const waitLabel = formatDurationCompact(activityHostingStatus.retryAfterMs);
+                message = `You have used ${activityHostingStatus.limit} of ${activityHostingStatus.limit} hosting slots. Available again in ${waitLabel}.`;
+                createDisabled = true;
+                createLabel = 'Hosting Limit Reached';
+                statusEl.classList.add('limited');
+            } else if (activityHostingStatus) {
+                const remaining = Number.isFinite(activityHostingStatus.remaining) ? activityHostingStatus.remaining : 0;
+                const slotLabel = remaining === 1 ? 'slot' : 'slots';
+                message = `${remaining} hosting ${slotLabel} left in the next 24 hours.`;
+            }
+
+            statusEl.innerText = message;
+            document.querySelectorAll('.theme-option').forEach((button) => {
+                button.disabled = createDisabled;
+            });
+            createBtn.disabled = createDisabled;
+            createBtn.innerText = createLabel;
+        }
+
+        async function refreshActivityHostingStatus() {
+            if (!authToken || !currentUserProfile || !currentUserProfile.isProfileComplete) {
+                activityHostingStatus = null;
+                activityHostingStatusError = '';
+                activityHostingStatusLoading = false;
+                hostingStatusRequestCounter += 1;
+                updateActivityHostingUi();
+                return null;
+            }
+
+            const requestId = hostingStatusRequestCounter + 1;
+            hostingStatusRequestCounter = requestId;
+            activityHostingStatusLoading = true;
+            activityHostingStatusError = '';
+            updateActivityHostingUi();
+
+            try {
+                const status = await apiRequest('/api/activities/hosting-status');
+                if (requestId !== hostingStatusRequestCounter) return activityHostingStatus;
+                activityHostingStatus = status;
+                activityHostingStatusError = '';
+                return status;
+            } catch (error) {
+                if (requestId !== hostingStatusRequestCounter) return activityHostingStatus;
+                activityHostingStatus = null;
+                activityHostingStatusError = 'Could not verify hosting availability right now. You can still try to host and we will check on submit.';
+                return null;
+            } finally {
+                if (requestId === hostingStatusRequestCounter) {
+                    activityHostingStatusLoading = false;
+                    updateActivityHostingUi();
+                }
+            }
+        }
+
+        function resetPendingUi() {
+            document.getElementById('join-btn').disabled = false;
+            document.getElementById('join-btn').innerText = 'Join 5 km Chat';
+            document.getElementById('activity-join-btn').disabled = false;
+            document.getElementById('activity-join-btn').innerText = 'Join Activity';
+            document.getElementById('activity-leave-btn').disabled = false;
+            updateActivityHostControls(currentActivity);
+            updateActivityHostingUi();
+        }
+
+        function clearPendingRequest() {
+            if (pendingRequestTimer) {
+                clearTimeout(pendingRequestTimer);
+                pendingRequestTimer = null;
+            }
+        }
+
+        function startPendingRequest(timeoutMessage) {
+            clearPendingRequest();
+            pendingRequestTimer = setTimeout(() => {
+                pendingRoomRequestId = null;
+                resetPendingUi();
+                if (currentPlace && document.getElementById('info-view').style.display !== 'none') updatePlaceCard();
+                if (currentActivity && document.getElementById('activity-view').style.display !== 'none') renderActivityCard(currentActivity);
+                showToast(timeoutMessage);
+            }, 5000);
+        }
+
+        function ensureSocketReady() {
+            if (!currentUserProfile || !currentUserProfile.isProfileComplete) {
+                showAuthView(authToken ? 'profile' : 'login');
+                showToast('Finish your profile before joining chats.');
+                return false;
+            }
+            if (socket.connected) return true;
+            connectAuthenticatedSocket();
+            resetPendingUi();
+            showToast('Connecting to GeoChat...');
+            return false;
+        }
+
+        function playSound(id) {
+            const el = document.getElementById(id);
+            if (!el) return;
+            try {
+                el.currentTime = 0;
+                const playPromise = el.play();
+                if (playPromise && typeof playPromise.catch === 'function') playPromise.catch(() => {});
+            } catch (error) {}
+        }
+
+        function normalizeThemeKey(theme) {
+            const normalizedTheme = String(theme || '').trim().toLowerCase();
+            if (normalizedTheme === 'clubs' || normalizedTheme === 'drinking') return 'clubdrinks';
+            return normalizedTheme;
+        }
+        function getThemeInfo(theme) { return activityThemes[normalizeThemeKey(theme)] || unknownActivityTheme; }
+        function getThemeAction(theme) { return getThemeInfo(theme).action || 'Hang out'; }
+        function buildGoalTemplate() { return 'leave a message!!!'; }
+        function makeInitials(name) { return (String(name || 'T').trim().split(/\s+/).slice(0, 2).map((part) => part.charAt(0).toUpperCase()).join('')) || 'T'; }
+
+        function renderThemeOptions() {
+            const chooser = document.getElementById('theme-chooser');
+            chooser.innerHTML = hostActivityThemes.map((themeKey) => {
+                const theme = getThemeInfo(themeKey);
+                const activeClass = themeKey === selectedActivityTheme ? ' active' : '';
+                return `<button class="theme-option${activeClass}" type="button" data-theme="${themeKey}" onclick="selectActivityTheme('${themeKey}')"><span>${escapeHtml(theme.glyph)}</span>${escapeHtml(theme.buttonLabel || theme.label)}</button>`;
+            }).join('');
+            updateActivityHostingUi();
+        }
+
+        function buildFallbackArtwork(label, background, foreground) {
+            const initials = escapeHtml((label || '?').slice(0, 2).toUpperCase());
+            const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="160" height="160" viewBox="0 0 160 160"><rect width="160" height="160" rx="42" fill="${background}"/><text x="80" y="92" text-anchor="middle" font-family="Segoe UI, Arial" font-size="56" font-weight="800" fill="${foreground}">${initials}</text></svg>`;
+            return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
+        }
+
+        function normalizeMarkerCategoryType(type) {
+            const normalizedType = String(type || '').trim().toLowerCase();
+            return markerCategoryAliases[normalizedType] || normalizedType;
+        }
+
+        function pickMarkerCategoryType(types = []) {
+            const availableTypes = Array.isArray(types) ? types.map((type) => normalizeMarkerCategoryType(type)).filter(Boolean) : [];
+            return availableTypes.find((type) => categoryStyles[type]) || availableTypes[0] || 'tourist_attraction';
+        }
+
+        function buildMarkerLabelText(value, fallback = 'POI') {
+            const clean = trimToLength(String(value || '').replace(/&/g, ' ').replace(/[^a-z0-9 ]/gi, ' '), 24).trim();
+            if (!clean) return fallback;
+            const parts = clean.split(/\s+/).filter(Boolean);
+            const candidate = parts.find((part) => part.length > 2) || parts[0] || fallback;
+            return candidate.slice(0, 7).toUpperCase();
+        }
+
+        function svgPin(style, count) {
+            const safeCount = Number.isFinite(count) ? Math.max(0, count) : 0;
+            const badgeText = safeCount > 99 ? '99+' : (safeCount > 0 ? String(safeCount) : '');
+            const badgeFontSize = badgeText.length <= 2 ? 11 : 8;
+            const color = style.color || '#2368d9';
+            const fill = style.background || '#ffffff';
+            const glyph = escapeHtml(style.glyph || '\u{1F4CD}');
+            const markerLabel = escapeHtml(buildMarkerLabelText(style.markerLabel || style.buttonLabel || style.label || '', 'VIBE'));
+            const labelFontSize = markerLabel.length <= 4 ? 13 : (markerLabel.length <= 6 ? 11 : 10);
+            const badge = badgeText
+                ? `<g transform="translate(66 16)"><circle cx="0" cy="0" r="10" fill="#ff5d73" stroke="#ffffff" stroke-width="2"/><text x="0" y="1" text-anchor="middle" dominant-baseline="middle" font-size="${badgeFontSize}" font-family="Segoe UI, Arial" font-weight="800" fill="#ffffff">${badgeText}</text></g>`
+                : '';
+            const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="88" height="96" viewBox="0 0 88 96">
+                <ellipse cx="44" cy="84" rx="18" ry="5" fill="#0f172a" opacity="0.08"/>
+                <path d="M44 10c15 0 26 10 26 24 0 10-5 17-13 22l-13 15-13-15c-8-5-13-12-13-22 0-14 11-24 26-24z" fill="${fill}" stroke="${color}" stroke-width="2.5" stroke-linejoin="round"/>
+                <circle cx="44" cy="31" r="16" fill="#ffffff"/>
+                <circle cx="44" cy="31" r="13.5" fill="${color}" opacity="0.12"/>
+                <text x="44" y="34" text-anchor="middle" dominant-baseline="middle" font-size="18" font-family="Segoe UI Emoji, Arial" fill="${color}">${glyph}</text>
+                <rect x="19" y="60" width="50" height="18" rx="9" fill="${color}"/>
+                <text x="44" y="73" text-anchor="middle" dominant-baseline="middle" font-size="${labelFontSize}" font-family="Segoe UI, Arial" font-weight="800" letter-spacing="0.6" fill="#ffffff">${markerLabel}</text>
+                ${badge}
+            </svg>`;
+            return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
+        }
+
+        function svgUserLocationDot() {
+            const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="68" height="68" viewBox="0 0 68 68"><circle cx="34" cy="34" r="22" fill="#3b82f6" opacity="0.2"/><circle cx="34" cy="34" r="12" fill="#ffffff"/><circle cx="34" cy="34" r="8" fill="#2563eb"/></svg>`;
+            return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
+        }
+
+        function buildMarkerIcon(style, size, count) {
+            const height = Math.round(size * 1.09);
+            return {
+                url: svgPin(style, count),
+                scaledSize: new google.maps.Size(size, height),
+                anchor: new google.maps.Point(size / 2, Math.round(height * 0.74))
+            };
+        }
+
+        function buildUserLocationIcon() {
+            return {
+                url: svgUserLocationDot(),
+                scaledSize: new google.maps.Size(userLocationMarkerSize.width, userLocationMarkerSize.height),
+                anchor: new google.maps.Point(userLocationMarkerSize.width / 2, userLocationMarkerSize.height / 2)
+            };
+        }
+
+        function buildCategoryIcon(type, isFeatured, count) {
+            const normalizedType = normalizeMarkerCategoryType(type);
+            const style = categoryStyles[normalizedType] || { color: '#2368d9', background: '#e0f2fe', glyph: '\u{1F4CD}', markerLabel: 'Spot' };
+            return buildMarkerIcon(style, isFeatured ? markerSizes.featured : markerSizes.standard, count);
+        }
+
+        function buildActivityIcon(theme, count) {
+            const style = getThemeInfo(theme);
+            return buildMarkerIcon(style, markerSizes.activity, count);
+        }
+
+        function buildDroppedPinIcon() {
+            return buildMarkerIcon(droppedPinStyle, markerSizes.dropped, 0);
+        }
+
+        function setSheetView(viewName) {
+            document.getElementById('bottom-sheet').scrollTop = 0;
+            document.getElementById('info-view').style.display = viewName === 'info' ? 'block' : 'none';
+            document.getElementById('activity-view').style.display = viewName === 'activity' ? 'block' : 'none';
+            document.getElementById('chat-interface').style.display = viewName === 'chat' ? 'flex' : 'none';
+        }
+
+        function showSheet() { document.getElementById('bottom-sheet').classList.add('active'); }
+        function closeSheet() { document.getElementById('bottom-sheet').classList.remove('active'); isChatOpen = false; }
+        function getRoomIdForPlaceKey(placeKey) { return placeKey ? (placeRoomMap.get(placeKey) || null) : null; }
+        function getPlaceCount(place) { const roomId = place && place.place_id ? getRoomIdForPlaceKey(place.place_id) : null; return roomId ? (currentOccupancy[roomId] || 0) : 0; }
+
+        function refreshPlaceMarkerIcons() {
+            markerMap.forEach((entry, placeKey) => {
+                const roomId = getRoomIdForPlaceKey(placeKey);
+                entry.marker.setIcon(buildCategoryIcon(entry.type, entry.isFeatured, roomId ? (currentOccupancy[roomId] || 0) : 0));
+            });
+        }
+
+        function refreshActivityMarkers() {
+            activityMarkers.forEach((marker, activityId) => {
+                const activity = activityById.get(activityId);
+                if (activity) marker.setIcon(buildActivityIcon(activity.theme, activity.participantCount));
+            });
+        }
+
+        function refreshAllMarkers() { refreshPlaceMarkerIcons(); refreshActivityMarkers(); }
+
+        function renderFeaturedMarkers() {
+            featuredHubs.forEach((hub) => {
+                const placeKey = hub.id || `${hub.name}-${hub.lat}-${hub.lng}`;
+                const marker = new google.maps.Marker({
+                    position: { lat: hub.lat, lng: hub.lng },
+                    map,
+                    title: hub.name,
+                    zIndex: 1000,
+                    icon: buildCategoryIcon(hub.type, true, 0)
+                });
+
+                marker.addListener('click', () => {
+                    const fallbackPlace = { name: hub.name, place_id: placeKey, vicinity: 'Featured Spot', geometry: { location: new google.maps.LatLng(hub.lat, hub.lng) } };
+                    openPlaceCard(fallbackPlace);
+                    if (!hub.id) return;
+                    service.getDetails({ placeId: hub.id, fields: ['name', 'photos', 'vicinity', 'place_id', 'geometry'] }, (place, status) => {
+                        if (status === google.maps.places.PlacesServiceStatus.OK && place) openPlaceCard(place);
+                    });
+                });
+
+                markerMap.set(placeKey, { marker, type: hub.type, isFeatured: true });
+            });
+        }
+
+        function renderPlaceMarker(place, type) {
+            if (!map || !place || !place.place_id || markerMap.has(place.place_id)) return;
+            const markerType = pickMarkerCategoryType(place.types && place.types.length ? place.types : [type]);
+            const marker = new google.maps.Marker({
+                position: place.geometry.location,
+                map,
+                title: place.name,
+                icon: buildCategoryIcon(markerType, false, getPlaceCount(place))
+            });
+            marker.addListener('click', () => openPlaceCard(place));
+            markerMap.set(place.place_id, { marker, type: markerType, isFeatured: false });
+        }
+
+        function upsertActivityMarker(activity) {
+            if (!map) return;
+            const position = { lat: activity.lat, lng: activity.lng };
+            const existing = activityMarkers.get(activity.id);
+            if (existing) {
+                existing.setPosition(position);
+                existing.setTitle(activity.goal);
+                existing.setIcon(buildActivityIcon(activity.theme, activity.participantCount));
+                return;
+            }
+            const marker = new google.maps.Marker({ position, map, title: activity.goal, zIndex: 1200, icon: buildActivityIcon(activity.theme, activity.participantCount) });
+            marker.addListener('click', () => openActivityCard(activityById.get(activity.id) || activity));
+            activityMarkers.set(activity.id, marker);
+        }
+
+        function syncActivityState(activities) {
+            currentActivities = Array.isArray(activities) ? activities : [];
+            activityById.clear();
+            currentActivities.forEach((activity) => activityById.set(activity.id, activity));
+            if (map) {
+                const nextIds = new Set(currentActivities.map((activity) => activity.id));
+                currentActivities.forEach(upsertActivityMarker);
+                activityMarkers.forEach((marker, activityId) => {
+                    if (!nextIds.has(activityId)) {
+                        marker.setMap(null);
+                        activityMarkers.delete(activityId);
+                    }
+                });
+            }
+            if (currentActivity) {
+                const latest = activityById.get(currentActivity.id);
+                if (latest) {
+                    currentActivity = latest;
+                    if (document.getElementById('activity-view').style.display !== 'none') renderActivityCard(latest);
+                } else {
+                    currentActivity = null;
+                    if (document.getElementById('activity-view').style.display !== 'none') currentPlace ? openPlaceCard(currentPlace) : closeSheet();
+                }
+            }
+            refreshActivityMarkers();
+            updateActivitiesList();
+        }
+
+        function ensureClickMarker(latLng) {
+            if (!clickMarker) {
+                clickMarker = new google.maps.Marker({ position: latLng, map, title: 'Dropped Pin', zIndex: 1100, icon: buildDroppedPinIcon() });
+                clickMarker.addListener('click', () => { if (clickMarkerPlace) openPlaceCard(clickMarkerPlace); });
+            } else {
+                clickMarker.setPosition(latLng);
+                clickMarker.setMap(map);
+                clickMarker.setIcon(buildDroppedPinIcon());
+            }
+        }
+
+        function openClickMarker(place) {
+            clickMarkerPlace = place;
+            if (clickMarker) clickMarker.setTitle(place.name || 'Dropped Pin');
+            google.maps.event.trigger(clickMarker, 'click');
+        }
+
+        function handleMapClick(latLng) {
+            ensureClickMarker(latLng);
+            const lat = latLng.lat();
+            const lng = latLng.lng();
+            const fallbackPlace = { name: 'Dropped Pin', place_id: `pin-${lat.toFixed(6)}-${lng.toFixed(6)}`, vicinity: `${lat.toFixed(6)}, ${lng.toFixed(6)}`, geometry: { location: latLng }, isDroppedPin: true };
+            openClickMarker(fallbackPlace);
+            if (!geocoder) return;
+            geocoder.geocode({ location: latLng }, (results, status) => {
+                if (status === 'OK' && results && results[0]) {
+                    const best = results[0];
+                    openClickMarker({ name: best.formatted_address || 'Dropped Pin', place_id: best.place_id || fallbackPlace.place_id, vicinity: best.formatted_address || fallbackPlace.vicinity, geometry: { location: latLng }, isDroppedPin: true });
+                }
+            });
+        }
+
+        function handlePoiClick(placeId) {
+            service.getDetails({ placeId, fields: ['name', 'photos', 'vicinity', 'place_id', 'geometry', 'types'] }, (place, status) => {
+                if (status === google.maps.places.PlacesServiceStatus.OK && place) {
+                    const type = pickMarkerCategoryType(place.types);
+                    renderPlaceMarker(place, type);
+                    openPlaceCard(place);
+                    map.panTo(place.geometry.location);
+                }
+            });
+        }
+
+        function updatePlaceCard() {
+            if (!currentPlace) return;
+            const count = getPlaceCount(currentPlace);
+            const photoUrl = currentPlace.photos && currentPlace.photos.length && typeof currentPlace.photos[0].getUrl === 'function'
+                ? currentPlace.photos[0].getUrl({ maxWidth: 400 })
+                : buildFallbackArtwork(makeInitials(currentPlace.name), '#e8f0ff', '#2368d9');
+            document.getElementById('place-img').src = photoUrl;
+            document.getElementById('place-name').innerText = currentPlace.name || 'Selected Spot';
+            document.getElementById('place-meta').innerText = currentPlace.vicinity || 'Nearby location';
+            updateDistanceLine('place-distance', currentPlace);
+            document.getElementById('trending-tag').innerText = count > 0 ? `${count} traveler(s) already in this 5 km chat` : 'Be the first traveler to join this 5 km chat!';
+            document.getElementById('join-btn').innerText = 'Join 5 km Chat';
+            document.getElementById('join-btn').disabled = false;
+            document.getElementById('host-btn').disabled = false;
+        }
+
+        function openPlaceCard(place) {
+            currentPlace = place;
+            currentActivity = null;
+            updatePlaceCard();
+            updateActivityHostControls(null);
+            setSheetView('info');
+            showSheet();
+        }
+
+        function isUserInActivity(activity) {
+            const user = ensureUserName();
+            return !!(user && activity && Array.isArray(activity.participants) && activity.participants.includes(user));
+        }
+
+        function renderParticipantAvatars(participants) {
+            const strip = document.getElementById('activity-avatars');
+            if (!participants || !participants.length) {
+                strip.innerHTML = '<div class="avatar-empty">No one has joined yet</div>';
+                return;
+            }
+            strip.innerHTML = participants.slice(0, 5).map((name) => `<div class="avatar-pill">${escapeHtml(makeInitials(name))}</div>`).join('');
+        }
+
+        function renderActivityCard(activity) {
+            const theme = getThemeInfo(activity.theme);
+            const joined = isUserInActivity(activity);
+            const activeSameRoom = currentRoomType === 'activity' && currentRoomId === activity.id;
+            const ageRange = getActivityAgeRange(activity);
+            document.getElementById('activity-theme-icon').innerText = theme.glyph;
+            document.getElementById('activity-theme-icon').style.background = theme.background;
+            document.getElementById('activity-theme-icon').style.borderColor = `${theme.color}33`;
+            document.getElementById('activity-theme-pill').innerText = theme.label;
+            document.getElementById('activity-theme-pill').style.background = theme.background;
+            document.getElementById('activity-theme-pill').style.color = theme.color;
+            document.getElementById('activity-goal').innerText = activity.goal;
+            document.getElementById('activity-place').innerText = activity.placeName ? `${activity.placeName}${activity.vicinity ? `, ${activity.vicinity}` : ''}` : (activity.vicinity || 'Nearby');
+            updateDistanceLine('activity-distance', activity);
+            document.getElementById('activity-host').innerText = activity.host;
+            document.getElementById('activity-count').innerText = `${activity.participantCount} going`;
+            document.getElementById('activity-callout').innerText = activity.goal;
+            document.getElementById('activity-date-chip').innerHTML = `<span>&#128197;</span>${escapeHtml(formatActivityDateLabel(activity.scheduledFor, { fallback: 'Flexible day' }))}`;
+            document.getElementById('activity-age-chip').innerHTML = `<span>&#128101;</span>${escapeHtml(`Ages ${formatActivityAgeRange(ageRange)}`)}`;
+            document.getElementById('activity-participants').innerText = activity.participants && activity.participants.length ? activity.participants.join(', ') : 'Be the first traveler to join this activity.';
+            renderParticipantAvatars(activity.participants || []);
+            const joinBtn = document.getElementById('activity-join-btn');
+            const leaveBtn = document.getElementById('activity-leave-btn');
+            joinBtn.disabled = false;
+            leaveBtn.disabled = false;
+            joinBtn.innerText = joined ? (activeSameRoom ? 'Activity Chat Open' : 'Open Activity Chat') : 'Join Activity';
+            leaveBtn.innerText = 'Leave Activity';
+            leaveBtn.style.display = joined ? 'block' : 'none';
+            updateActivityHostControls(activity);
+        }
+
+        function openActivityCard(activity) {
+            currentActivity = activityById.get(activity.id) || activity;
+            renderActivityCard(currentActivity);
+            setSheetView('activity');
+            showSheet();
+        }
+
+        function updateThemeButtons() {
+            document.querySelectorAll('.theme-option').forEach((button) => button.classList.toggle('active', button.dataset.theme === selectedActivityTheme));
+        }
+
+        function selectActivityTheme(theme) {
+            const normalizedTheme = normalizeThemeKey(theme);
+            if (!creatableActivityThemes.has(normalizedTheme)) return;
+            selectedActivityTheme = normalizedTheme;
+            updateThemeButtons();
+            if (currentPlace) {
+                const input = document.getElementById('activity-goal-input');
+                if (!input.value.trim()) input.value = buildGoalTemplate(selectedActivityTheme, currentPlace.name);
+            }
+        }
+
+        async function openHostActivityModal() {
+            if (!currentPlace) {
+                showToast('Select a place or drop a pin before hosting.');
+                return;
+            }
+            if (!currentUserProfile || !currentUserProfile.isProfileComplete) {
+                showAuthView(authToken ? 'profile' : 'login');
+                showToast('Finish your profile before hosting an activity.');
+                return;
+            }
+            updateThemeButtons();
+            resetActivityPlannerInputs();
+            document.getElementById('host-location-label').innerText = `Hosting at ${currentPlace.name}`;
+            document.getElementById('activity-goal-input').value = buildGoalTemplate(selectedActivityTheme, currentPlace.name);
+            document.getElementById('activity-modal').classList.add('active');
+            updateActivityHostingUi();
+            await refreshActivityHostingStatus();
+        }
+
+        function closeHostActivityModal() { document.getElementById('activity-modal').classList.remove('active'); }
+
+        async function endActivityById(activityId) {
+            const targetId = String(activityId || '').trim();
+            if (!targetId) return;
+            const activity = activityById.get(targetId) || (currentActivity && currentActivity.id === targetId ? currentActivity : null);
+            if (!activity) {
+                showToast('That activity is no longer available.');
+                return;
+            }
+            if (!isCurrentUserActivityHost(activity)) {
+                showToast('Only the host can end this activity early.');
+                return;
+            }
+
+            const confirmed = await promptForConfirmation({
+                title: 'End this activity early?',
+                body: 'This will remove the meetup from the map, close its live room, and free one of your hosting slots right away.',
+                confirmLabel: 'End Activity'
+            });
+
+            if (!confirmed) return;
+
+            const cardButton = document.getElementById('end-activity-btn');
+            const chatButton = document.getElementById('chat-end-activity-btn');
+            if (cardButton) {
+                cardButton.disabled = true;
+                cardButton.innerText = 'Ending...';
+            }
+            if (chatButton) {
+                chatButton.disabled = true;
+                chatButton.innerText = 'Ending...';
+            }
+
+            try {
+                const response = await apiRequest(`/api/activities/${encodeURIComponent(targetId)}/end`, {
+                    method: 'POST'
+                });
+
+                activityHostingStatus = response.hostingStatus || null;
+                activityHostingStatusError = '';
+                activityHostingStatusLoading = false;
+                activityHistoryEntries = [];
+                handleActivityEnded({
+                    activityId: targetId,
+                    hostId: currentUserProfile ? currentUserProfile.id : '',
+                    endedByHost: true
+                });
+                updateActivityHostingUi();
+                showSuccessOverlay("You're all set!", 'Your activity ended early and one hosting slot is free again.');
+            } catch (error) {
+                showToast(error.message);
+            } finally {
+                updateActivityHostControls(currentActivity);
+            }
+        }
+
+        function endSelectedActivity() {
+            if (!currentActivity) return;
+            endActivityById(currentActivity.id);
+        }
+
+        function endCurrentRoomActivity() {
+            if (currentRoomType !== 'activity' || !currentRoomId) return;
+            endActivityById(currentRoomId);
+        }
+
+        function joinRegionalChat(place = currentPlace) {
+            const targetPlace = place || currentPlace;
+            if (!targetPlace || !targetPlace.geometry || !targetPlace.geometry.location) {
+                showToast('Select a place or drop a pin first.');
+                return;
+            }
+            if (!ensureSocketReady()) return;
+            pendingRoomRequestId = nextRequestId('regional');
+            startPendingRequest('Could not join the regional chat. Check the server and try again.');
+            document.getElementById('trending-tag').innerText = 'Joining the 5 km chat...';
+            document.getElementById('join-btn').innerText = 'Joining...';
+            document.getElementById('join-btn').disabled = true;
+            socket.emit('join-room', {
+                requestId: pendingRoomRequestId,
+                placeKey: targetPlace.place_id,
+                lat: targetPlace.geometry.location.lat(),
+                lng: targetPlace.geometry.location.lng(),
+                roomName: targetPlace.name
+            });
+        }
+
+        function createActivity() {
+            if (!currentPlace || !currentPlace.geometry || !currentPlace.geometry.location) {
+                showToast('Select a place or drop a pin first.');
+                return;
+            }
+            if (activityHostingStatusLoading) {
+                showToast('Checking hosting availability. Please wait a moment.');
+                return;
+            }
+            if (activityHostingStatus && activityHostingStatus.isLimited) {
+                showToast(`Hosting available again in ${formatDurationCompact(activityHostingStatus.retryAfterMs)}.`);
+                return;
+            }
+            if (!creatableActivityThemes.has(selectedActivityTheme)) {
+                showToast('Choose a valid activity theme before hosting.');
+                return;
+            }
+            const goal = document.getElementById('activity-goal-input').value.trim();
+            if (!goal) {
+                showToast('Add a short goal for your activity.');
+                return;
+            }
+            if (!selectedActivityDateKey) {
+                showToast('Pick a day for your activity.');
+                return;
+            }
+            if (!ensureSocketReady()) return;
+            pendingRoomRequestId = nextRequestId('activity-create');
+            startPendingRequest('Could not create the activity. Check the server and try again.');
+            document.getElementById('create-activity-btn').innerText = 'Creating...';
+            document.getElementById('create-activity-btn').disabled = true;
+            socket.emit('create-activity', {
+                requestId: pendingRoomRequestId,
+                goal,
+                theme: selectedActivityTheme,
+                lat: currentPlace.geometry.location.lat(),
+                lng: currentPlace.geometry.location.lng(),
+                placeName: currentPlace.name,
+                placeKey: currentPlace.place_id,
+                vicinity: currentPlace.vicinity || '',
+                scheduledFor: selectedActivityDateKey,
+                ageMin: selectedActivityAgeRange.min,
+                ageMax: selectedActivityAgeRange.max
+            });
+            closeHostActivityModal();
+            showToast('Creating your activity room...');
+        }
+
+        function joinSelectedActivity() {
+            if (!currentActivity) return;
+            currentActivity = activityById.get(currentActivity.id) || currentActivity;
+            if (!ensureSocketReady()) return;
+            pendingRoomRequestId = nextRequestId('activity-join');
+            startPendingRequest('Could not join the activity. Check the server and try again.');
+            document.getElementById('activity-join-btn').innerText = 'Joining...';
+            document.getElementById('activity-join-btn').disabled = true;
+            socket.emit('join-activity', { requestId: pendingRoomRequestId, activityId: currentActivity.id });
+        }
+
+        function leaveSelectedActivity() {
+            if (!currentActivity) return;
+            document.getElementById('activity-leave-btn').innerText = 'Leaving...';
+            document.getElementById('activity-leave-btn').disabled = true;
+            socket.emit('leave-activity', { activityId: currentActivity.id });
+        }
+
+        function leaveCurrentChat() {
+            if (!currentRoomId) return;
+            const button = document.getElementById('leave-chat-btn');
+            button.disabled = true;
+            button.innerText = 'Leaving...';
+            if (currentRoomType === 'activity') socket.emit('leave-activity', { activityId: currentRoomId });
+            else socket.emit('leave-room');
+        }
+
+        function renderChat(data) {
+            const msgBox = document.getElementById('messages');
+            msgBox.innerHTML = '';
+            applyRoomChatFriendState(data);
+            (data.history || []).forEach(addMessageToUI);
+            document.getElementById('chat-room-title').innerText = data.roomName;
+            document.getElementById('chat-room-meta').innerText = data.roomType === 'activity' && data.activity
+                ? buildActivityRoomMeta(data.activity)
+                : (data.roomMeta || '');
+            document.getElementById('leave-chat-btn').disabled = false;
+            document.getElementById('leave-chat-btn').innerText = data.roomType === 'activity' ? 'Leave Activity' : 'Leave Chat';
+            updateActivityHostControls(data.roomType === 'activity' ? (data.activity || currentActivity) : null);
+            setSheetView('chat');
+            showSheet();
+            refreshChatFriendButtons();
+        }
+
+        function handleRoomJoined(data) {
+            clearPendingRequest();
+            if (data.placeKey && data.roomType === 'regional') placeRoomMap.set(data.placeKey, data.roomId);
+            if (data.activity) {
+                const nextActivities = currentActivities.filter((activity) => activity.id !== data.activity.id);
+                nextActivities.unshift(data.activity);
+                syncActivityState(nextActivities);
+                currentActivity = data.activity;
+            }
+            if (pendingRoomRequestId && data.requestId !== pendingRoomRequestId) return;
+            pendingRoomRequestId = null;
+            currentRoomId = data.roomId;
+            currentRoomType = data.roomType;
+            isChatOpen = true;
+            renderChat(data);
+            refreshAllMarkers();
+            playSound('join-sound');
+            if (data.requestId && data.requestId.indexOf('activity-create') === 0) {
+                activityHostingStatus = null;
+                activityHostingStatusError = '';
+                activityHostingStatusLoading = false;
+                hostingStatusRequestCounter += 1;
+                showToast('Activity created. Your chat room is live.');
+            }
+            else if (data.roomType === 'activity') showToast('Successfully joined the activity.');
+            else showToast('Joined the 5 km regional chat.');
+        }
+
+        function addMessageToUI(data) {
+            const msgBox = document.getElementById('messages');
+            const div = document.createElement('div');
+            const senderUserId = resolveChatMessageUserId(data);
+            const currentUserId = getCurrentUserId();
+            const currentUserName = currentUserProfile ? ((currentUserProfile.name || currentUserProfile.username || '').trim()) : '';
+            const isMe = senderUserId
+                ? Boolean(currentUserId) && senderUserId === currentUserId
+                : Boolean(currentUserName) && data.user === currentUserName;
+            if (data.type === 'system') {
+                div.className = 'msg system';
+                div.innerText = data.text;
+            } else {
+                div.className = `msg ${isMe ? 'me' : 'other'}`;
+                div.innerHTML = `<div class="msg-header"><span class="msg-author"><span class="msg-name">${escapeHtml(data.user)}</span><span class="chat-friend-slot" data-user-id="${escapeHtml(senderUserId)}" data-user-name="${escapeHtml(data.user || '')}">${isMe ? '' : buildChatFriendButtonMarkup(data)}</span></span><span>${escapeHtml(data.time || '')}</span></div><div class="msg-text">${escapeHtml(data.text)}</div>`;
+            }
+            msgBox.appendChild(div);
+            msgBox.scrollTop = msgBox.scrollHeight;
+        }
+
+        function sendMsg() {
+            const input = document.getElementById('msg-input');
+            const text = input.value.trim();
+            if (!text || !currentRoomId) return;
+            if (!ensureSocketReady()) return;
+            socket.emit('send-message', {
+                room: currentRoomId,
+                roomName: document.getElementById('chat-room-title').innerText,
+                text,
+                time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+            });
+            input.value = '';
+        }
+
+        function updateTravelerPills(data) {
+            const activeUsers = Number.isFinite(data && data.activeUsers) ? data.activeUsers : 0;
+            const activeActivities = Number.isFinite(data && data.activeActivities) ? data.activeActivities : currentActivities.length;
+            document.getElementById('travelers-pill').innerText = activeUsers > 99 ? '100+ Travelers Here' : `${activeUsers} Travelers Here`;
+            document.getElementById('activities-pill').innerText = activeActivities === 1 ? '1 Live Activity' : `${activeActivities} Live Activities`;
+        }
+
+        function handleRoomLeft(data) {
+            if (data.roomId && currentRoomId === data.roomId) {
+                currentRoomId = null;
+                currentRoomType = null;
+                isChatOpen = false;
+            }
+            setCurrentRoomParticipants([]);
+            document.getElementById('leave-chat-btn').disabled = false;
+            document.getElementById('leave-chat-btn').innerText = 'Leave Chat';
+            if (data.roomType === 'activity') {
+                const latest = currentActivity && activityById.has(currentActivity.id) ? activityById.get(currentActivity.id) : null;
+                if (latest) {
+                    currentActivity = latest;
+                    openActivityCard(latest);
+                } else if (currentPlace) openPlaceCard(currentPlace);
+                else closeSheet();
+                showToast('Left the activity.');
+            } else {
+                if (currentPlace) openPlaceCard(currentPlace);
+                else closeSheet();
+                showToast('Left the chat.');
+            }
+            updateActivityHostControls(currentActivity);
+        }
+
+        function initMap() {
+            if (mapInitialized || !googleMapsReady || !currentUserProfile || !currentUserProfile.isProfileComplete || !(window.google && google.maps)) return;
+            mapInitialized = true;
+            map = new google.maps.Map(document.getElementById('map'), {
+                center: currentUserLocation || { lat: 30.3165, lng: 78.0322 },
+                zoom: 13,
+                mapTypeId: 'terrain',
+                zoomControl: false,
+                streetViewControl: false,
+                mapTypeControl: false,
+                fullscreenControl: false,
+                clickableIcons: false,
+                gestureHandling: 'greedy',
+                styles: cleanColorfulMapStyles
+            });
+
+            service = new google.maps.places.PlacesService(map);
+            geocoder = new google.maps.Geocoder();
+            upsertCurrentLocationMarker();
+            syncActivityState(currentActivities);
+            if (socket.connected) socket.emit('request-global-state');
+
+            map.addListener('click', (event) => {
+                if (event.placeId) {
+                    event.stop();
+                    handlePoiClick(event.placeId);
+                } else {
+                    handleMapClick(event.latLng);
+                }
+            });
+        }
+
+        socket.on('activities-state', (activities) => syncActivityState(activities));
+        socket.on('activity-ended', (data) => handleActivityEnded(data));
+        socket.on('friends-summary', (summary) => applyFriendSummary(summary));
+        socket.on('friend_notification', (data) => handleFriendNotification(data));
+        socket.on('heatmap-state', (points) => updateHeatmapLayer(points));
+        socket.on('travelers-state', (data) => updateTravelerPills(data));
+        socket.on('room-state', (data) => handleRoomJoined(data));
+        socket.on('room-left', (data) => handleRoomLeft(data));
+        socket.on('receive-message', (data) => { addMessageToUI(data); if (data && data.type !== 'system') playSound('notify-sound'); });
+        socket.on('update-vibe-counts', (occupancyMap) => { currentOccupancy = occupancyMap || {}; if (currentPlace && document.getElementById('info-view').style.display !== 'none') updatePlaceCard(); refreshPlaceMarkerIcons(); });
+        socket.on('room-error', (data) => {
+            clearPendingRequest();
+            pendingRoomRequestId = null;
+            resetPendingUi();
+            document.getElementById('leave-chat-btn').disabled = false;
+            document.getElementById('leave-chat-btn').innerText = currentRoomType === 'activity' ? 'Leave Activity' : 'Leave Chat';
+            if (currentPlace && document.getElementById('info-view').style.display !== 'none') updatePlaceCard();
+            if (currentActivity && document.getElementById('activity-view').style.display !== 'none') renderActivityCard(currentActivity);
+            showToast((data && data.message) || 'Something went wrong.');
+        });
+
+        socket.on('connect', () => {
+            clearPendingRequest();
+            if (currentUserLocation) socket.emit('update-user-location', currentUserLocation);
+            if (mapInitialized) socket.emit('request-global-state');
+            if (currentUserProfile && currentUserProfile.isProfileComplete) refreshFriendSummary();
+        });
+
+        socket.on('connect_error', (error) => {
+            clearPendingRequest();
+            resetPendingUi();
+            const message = (error && error.message) || 'Could not connect to GeoChat.';
+            if (/profile/i.test(message)) {
+                socket.disconnect();
+                showAuthView('profile');
+            } else if (/auth/i.test(message)) {
+                socket.disconnect();
+                cacheUserProfile('', null);
+                showAuthView('login');
+            }
+            showToast(message);
+        });
+
+        socket.on('disconnect', () => {
+            clearPendingRequest();
+            resetPendingUi();
+            if (currentUserProfile && currentUserProfile.isProfileComplete) showToast('Realtime connection lost. Trying again...');
+        });
+
+        document.getElementById('msg-input').addEventListener('keydown', (event) => {
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                sendMsg();
+            }
+        });
+
+        document.getElementById('friend-search-input').addEventListener('input', handleFriendSearchInput);
+
+        document.getElementById('activity-modal').addEventListener('click', (event) => {
+            if (event.target.id === 'activity-modal') closeHostActivityModal();
+        });
+
+        document.getElementById('activity-history-overlay').addEventListener('click', (event) => {
+            if (event.target.id === 'activity-history-overlay') closeActivityHistoryPage();
+        });
+
+        document.getElementById('confirm-modal').addEventListener('click', (event) => {
+            if (event.target.id === 'confirm-modal') resolveConfirmAction(false);
+        });
+
+        document.getElementById('success-overlay').addEventListener('click', () => {
+            document.getElementById('success-overlay').classList.remove('active');
+        });
+
+        document.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape' && friendsDrawerOpen) closeFriendsDrawer();
+        });
+
+        ['profile-name-input', 'profile-occupation-input', 'profile-avatar-input'].forEach((id) => {
+            document.getElementById(id).addEventListener('input', updateProfilePreview);
+        });
+
+        renderActivityDateOptions();
+        initializeActivityAgeSlider();
+        renderThemeOptions();
+        restoreSession();
+    </script>
+</body>
+</html>
